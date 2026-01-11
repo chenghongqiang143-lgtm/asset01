@@ -43,11 +43,12 @@ export interface Asset {
 
 export interface Budget {
   category: string; 
-  subCategory?: string; // 增加子分类字段
+  subCategory?: string;
   monthlyAmount: number;
   spentThisMonth: number;
   carryOver: number;
   notes?: string;
+  color?: string; // 增加自定义颜色支持
 }
 
 export interface AIInsight {

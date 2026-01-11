@@ -1,5 +1,5 @@
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, memo } from 'react';
 import { Asset, AssetCategory, CategoryColors } from '../types';
 import { Icons } from '../constants';
 
@@ -12,7 +12,7 @@ interface AssetCardProps {
   onVisible?: (id: string, color: string) => void;
 }
 
-const AssetCard: React.FC<AssetCardProps> = ({ asset, onDelete, onUpdate, onShowChart, onEditFull, onVisible }) => {
+const AssetCard: React.FC<AssetCardProps> = memo(({ asset, onDelete, onUpdate, onShowChart, onEditFull, onVisible }) => {
   const [isEditingValue, setIsEditingValue] = useState(false);
   const [tempValue, setTempValue] = useState(asset.value.toString());
   const cardRef = useRef<HTMLDivElement>(null);
@@ -39,7 +39,6 @@ const AssetCard: React.FC<AssetCardProps> = ({ asset, onDelete, onUpdate, onShow
   }, [asset.id, baseColor, onVisible]);
 
   const handleMouseDown = (e: React.MouseEvent | React.TouchEvent) => {
-    // 排除按钮点击，避免冲突
     if ((e.target as HTMLElement).closest('button')) return;
     
     pressTimer.current = window.setTimeout(() => {
@@ -79,10 +78,18 @@ const AssetCard: React.FC<AssetCardProps> = ({ asset, onDelete, onUpdate, onShow
     >
       <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle, #fff 1px, transparent 1px)', backgroundSize: '10px 10px' }} />
       
-      {hasProgress && <div className="absolute bottom-0 left-0 h-1 bg-black/10 z-0 w-full" />}
+      {/* 资产页攒钱/负债全高背景进度条 (与预算页逻辑一致) */}
       {hasProgress && (
         <div 
-          className="absolute bottom-0 left-0 h-1 bg-white/40 z-1 transition-all duration-1000 ease-out"
+          className="absolute top-0 left-0 h-full transition-all duration-1000 z-0 bg-white/10"
+          style={{ width: `${progressPercent}%` }}
+        />
+      )}
+      
+      {/* 底部细进度线 */}
+      {hasProgress && (
+        <div 
+          className="absolute bottom-0 left-0 h-1 bg-white/30 z-10 transition-all duration-1000 ease-out"
           style={{ width: `${progressPercent}%` }}
         />
       )}
@@ -162,6 +169,6 @@ const AssetCard: React.FC<AssetCardProps> = ({ asset, onDelete, onUpdate, onShow
       </div>
     </div>
   );
-};
+});
 
 export default AssetCard;
