@@ -40,10 +40,7 @@ const AssetCard: React.FC<AssetCardProps> = memo(({ asset, onDelete, onUpdate, o
 
   const handleMouseDown = (e: React.MouseEvent | React.TouchEvent) => {
     if ((e.target as HTMLElement).closest('button')) return;
-    
-    pressTimer.current = window.setTimeout(() => {
-      onEditFull(asset);
-    }, 700);
+    pressTimer.current = window.setTimeout(() => onEditFull(asset), 700);
   };
 
   const handleMouseUp = () => {
@@ -55,9 +52,7 @@ const AssetCard: React.FC<AssetCardProps> = memo(({ asset, onDelete, onUpdate, o
 
   const handleSaveValue = () => {
     const val = parseFloat(tempValue);
-    if (!isNaN(val)) {
-      onUpdate(asset.id, { value: val });
-    }
+    if (!isNaN(val)) onUpdate(asset.id, { value: val });
     setIsEditingValue(false);
   };
 
@@ -78,20 +73,16 @@ const AssetCard: React.FC<AssetCardProps> = memo(({ asset, onDelete, onUpdate, o
     >
       <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle, #fff 1px, transparent 1px)', backgroundSize: '10px 10px' }} />
       
-      {/* 资产页攒钱/负债全高背景进度条 (与预算页逻辑一致) */}
+      {/* 资产账户背景大图标 */}
+      <div className="absolute right-[-10%] bottom-[-15%] opacity-[0.08] pointer-events-none z-0 transform rotate-[15deg] text-white">
+        <Icons.CategoryIcon category={asset.category} className="w-24 h-24" />
+      </div>
+
       {hasProgress && (
-        <div 
-          className="absolute top-0 left-0 h-full transition-all duration-1000 z-0 bg-white/10"
-          style={{ width: `${progressPercent}%` }}
-        />
+        <div className="absolute top-0 left-0 h-full transition-all duration-1000 z-0 bg-white/10" style={{ width: `${progressPercent}%` }} />
       )}
-      
-      {/* 底部细进度线 */}
       {hasProgress && (
-        <div 
-          className="absolute bottom-0 left-0 h-1 bg-white/30 z-10 transition-all duration-1000 ease-out"
-          style={{ width: `${progressPercent}%` }}
-        />
+        <div className="absolute bottom-0 left-0 h-1 bg-white/30 z-10 transition-all duration-1000 ease-out" style={{ width: `${progressPercent}%` }} />
       )}
 
       <div className="relative z-10 flex justify-between items-start">
@@ -106,20 +97,10 @@ const AssetCard: React.FC<AssetCardProps> = memo(({ asset, onDelete, onUpdate, o
               </span>
             )}
           </div>
-          <h3 className="text-base font-black text-white truncate drop-shadow-sm leading-tight tracking-tight">
-            {asset.name}
-          </h3>
+          <h3 className="text-base font-black text-white truncate drop-shadow-sm leading-tight tracking-tight">{asset.name}</h3>
         </div>
-        
         <div className="flex gap-1">
-          <button 
-            onClick={(e) => { 
-              e.stopPropagation(); 
-              e.preventDefault();
-              onShowChart(asset); 
-            }}
-            className="p-1.5 bg-white/10 hover:bg-white/30 text-white rounded-sm opacity-60 group-hover:opacity-100 transition-all duration-200 pointer-events-auto"
-          >
+          <button onClick={(e) => { e.stopPropagation(); onShowChart(asset); }} className="p-1.5 bg-white/10 hover:bg-white/30 text-white rounded-sm opacity-60 group-hover:opacity-100 transition-all duration-200">
             <Icons.Chart className="w-3.5 h-3.5" />
           </button>
         </div>
@@ -128,43 +109,19 @@ const AssetCard: React.FC<AssetCardProps> = memo(({ asset, onDelete, onUpdate, o
       <div className="relative z-10 flex justify-between items-end">
         <div className="min-w-0">
           {isEditingValue ? (
-            <input 
-              autoFocus
-              type="number"
-              value={tempValue}
-              onChange={(e) => setTempValue(e.target.value)}
-              onBlur={handleSaveValue}
-              onKeyDown={(e) => e.key === 'Enter' && handleSaveValue()}
-              className="text-xl font-mono font-black text-white bg-black/20 border-none outline-none rounded-sm px-1.5 w-32"
-              onClick={(e) => e.stopPropagation()}
-            />
+            <input autoFocus type="number" value={tempValue} onChange={(e) => setTempValue(e.target.value)} onBlur={handleSaveValue} onKeyDown={(e) => e.key === 'Enter' && handleSaveValue()} className="text-xl font-mono font-black text-white bg-black/20 border-none outline-none rounded-sm px-1.5 w-32" onClick={(e) => e.stopPropagation()} />
           ) : (
-            <div 
-              onClick={(e) => { e.stopPropagation(); setIsEditingValue(true); setTempValue(asset.value.toString()); }}
-              className="cursor-text hover:bg-white/5 px-0.5 rounded-sm transition-colors"
-            >
-              <span className="text-2xl font-mono font-black text-white">
-                {new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY', maximumFractionDigits: 0 }).format(asset.value)}
-              </span>
+            <div onClick={(e) => { e.stopPropagation(); setIsEditingValue(true); setTempValue(asset.value.toString()); }} className="cursor-text hover:bg-white/5 px-0.5 rounded-sm transition-colors">
+              <span className="text-2xl font-mono font-black text-white">{new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY', maximumFractionDigits: 0 }).format(asset.value)}</span>
             </div>
           )}
-          
           {hasProgress && (
-            <p className="text-[9px] font-bold text-white/60 mt-0.5 uppercase">
-              {progressPercent.toFixed(0)}% / {new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY', maximumFractionDigits: 0 }).format(asset.targetValue || 0)}
-            </p>
+            <p className="text-[9px] font-bold text-white/60 mt-0.5 uppercase">{progressPercent.toFixed(0)}% / {new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY', maximumFractionDigits: 0 }).format(asset.targetValue || 0)}</p>
           )}
         </div>
-        
         <div className="text-right">
-          {asset.notes && (
-            <div className="text-[9px] text-white/70 font-bold mb-0.5 max-w-[120px] truncate leading-none drop-shadow-sm">
-              {asset.notes}
-            </div>
-          )}
-          <div className="text-[8px] text-white/40 font-mono font-black uppercase whitespace-nowrap leading-none">
-            {asset.lastUpdated}
-          </div>
+          {asset.notes && <div className="text-[9px] text-white/70 font-bold mb-0.5 max-w-[120px] truncate leading-none drop-shadow-sm">{asset.notes}</div>}
+          <div className="text-[8px] text-white/40 font-mono font-black uppercase whitespace-nowrap leading-none">{asset.lastUpdated}</div>
         </div>
       </div>
     </div>
