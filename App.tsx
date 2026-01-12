@@ -3,6 +3,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef, memo } from '
 import { Asset, AssetCategory, CategoryColors, HistoryPoint, Budget } from './types';
 import { Icons } from './constants';
 import AssetCard from './components/AssetCard';
+import BudgetCard from './components/BudgetCard';
 import AddAssetModal from './components/AddAssetModal';
 import { AreaChart, Area, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid, PieChart, Pie, Cell, Legend } from 'recharts';
 
@@ -127,6 +128,9 @@ const App: React.FC = () => {
   const [quickAddIndex, setQuickAddIndex] = useState<number | null>(null);
   const [quickAmount, setQuickAmount] = useState('');
   const [editingCategory, setEditingCategory] = useState<{name: string, type: 'asset' | 'budget'} | null>(null);
+
+  const [isEditingTotalLimit, setIsEditingTotalLimit] = useState(false);
+  const [tempTotalLimit, setTempTotalLimit] = useState('');
 
   const [isAssetCatExpanded, setIsAssetCatExpanded] = useState(false);
   const [isBudgetCatExpanded, setIsBudgetCatExpanded] = useState(false);
@@ -257,18 +261,31 @@ const App: React.FC = () => {
     setBudgets(prev => {
       const newBudgets = [...prev];
       newBudgets[index] = { ...newBudgets[index], ...updates };
-      const categoriesOnly = newBudgets.filter(b => b.category !== '总计');
-      const totalIdx = newBudgets.findIndex(b => b.category === '总计');
-      if (totalIdx !== -1) {
-        newBudgets[totalIdx] = {
-          ...newBudgets[totalIdx],
-          monthlyAmount: categoriesOnly.reduce((sum, b) => sum + b.monthlyAmount, 0),
-          spentThisMonth: categoriesOnly.reduce((sum, b) => sum + b.spentThisMonth, 0)
-        };
+      
+      // 如果不是更新总计本身，我们需要重新计算总计
+      if (newBudgets[index].category !== '总计') {
+        const categoriesOnly = newBudgets.filter(b => b.category !== '总计');
+        const totalIdx = newBudgets.findIndex(b => b.category === '总计');
+        if (totalIdx !== -1) {
+          newBudgets[totalIdx] = {
+            ...newBudgets[totalIdx],
+            monthlyAmount: categoriesOnly.reduce((sum, b) => sum + b.monthlyAmount, 0),
+            spentThisMonth: categoriesOnly.reduce((sum, b) => sum + b.spentThisMonth, 0)
+          };
+        }
       }
       return newBudgets;
     });
   }, []);
+
+  const handleSaveTotalLimit = () => {
+    const val = parseFloat(tempTotalLimit);
+    if (!isNaN(val)) {
+      const totalIdx = budgets.findIndex(b => b.category === '总计');
+      if (totalIdx !== -1) handleUpdateBudget(totalIdx, { monthlyAmount: val });
+    }
+    setIsEditingTotalLimit(false);
+  };
 
   const startLongPress = useCallback((nameOrIndex: string | number, type: 'asset' | 'budget' | 'budgetItem') => {
     if (nameOrIndex === '全部') return;
@@ -507,9 +524,26 @@ const App: React.FC = () => {
                   {new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY', maximumFractionDigits: 0 }).format(budgetStats.remaining)}
                 </div>
                 <div className="grid grid-cols-2 gap-3 relative z-10 border-t border-white/10 pt-3">
-                  <div className="bg-white/10 p-2 rounded-sm border border-white/5">
+                  <div className="bg-white/10 p-2 rounded-sm border border-white/5 overflow-hidden">
                     <span className="text-[8px] font-black text-white/50 uppercase block">总预算</span>
-                    <span className="text-sm font-bold text-white">¥{budgetStats.limit.toLocaleString()}</span>
+                    {isEditingTotalLimit ? (
+                      <input 
+                        autoFocus
+                        type="number"
+                        value={tempTotalLimit}
+                        onChange={(e) => setTempTotalLimit(e.target.value)}
+                        onBlur={handleSaveTotalLimit}
+                        onKeyDown={(e) => e.key === 'Enter' && handleSaveTotalLimit()}
+                        className="w-full bg-white/20 text-white font-bold text-sm px-1 rounded-sm outline-none border-none"
+                      />
+                    ) : (
+                      <span 
+                        onClick={() => { setIsEditingTotalLimit(true); setTempTotalLimit(budgetStats.limit.toString()); }}
+                        className="text-sm font-bold text-white cursor-pointer hover:bg-white/5 px-0.5 rounded-sm transition-colors block"
+                      >
+                        ¥{budgetStats.limit.toLocaleString()}
+                      </span>
+                    )}
                   </div>
                   <div className="bg-black/10 p-2 rounded-sm border border-white/5 text-right">
                     <span className="text-[8px] font-black text-white/50 uppercase block">已确认支出</span>
@@ -536,45 +570,18 @@ const App: React.FC = () => {
                 </div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {filteredBudgets.map((b, i) => {
-                  const progress = Math.min(100, (b.spentThisMonth / (b.monthlyAmount || 1)) * 100);
-                  const isOver = b.spentThisMonth > b.monthlyAmount;
+                {filteredBudgets.map((b) => {
                   const realIndex = budgets.indexOf(b);
-                  const itemColor = b.color || themeColor;
                   return (
-                    <div key={i} onMouseDown={() => startLongPress(realIndex, 'budgetItem')} onMouseUp={clearLongPress} onMouseLeave={clearLongPress} onTouchStart={() => startLongPress(realIndex, 'budgetItem')} onTouchEnd={clearLongPress} className="bg-white border border-slate-200 rounded-sm p-5 shadow-sm hover:shadow-md transition-all relative overflow-hidden active:scale-[0.98] cursor-default h-[130px] flex flex-col justify-between">
-                      <div className={`absolute top-0 left-0 h-full transition-all duration-1000 z-0`} style={{ width: `${progress}%`, backgroundColor: isOver ? '#ef444415' : `${itemColor}12` }} />
-                      <div className={`absolute bottom-0 left-0 h-1 transition-all duration-1000 z-10 ${isOver ? 'bg-rose-500' : ''}`} style={{ width: `${progress}%`, backgroundColor: isOver ? undefined : itemColor }} />
-                      
-                      {/* 背景大图标 */}
-                      <div className="absolute right-[-10%] bottom-[-15%] opacity-[0.04] pointer-events-none z-0 transform rotate-[15deg]">
-                        <Icons.Wallet className="w-24 h-24" />
-                      </div>
-
-                      <div className="relative z-10 flex justify-between items-start">
-                        <div className="min-w-0 pr-2">
-                          <div className="flex items-center gap-1.5 mb-1">
-                             <span style={{ backgroundColor: isOver ? '#ef444420' : `${itemColor}20`, color: isOver ? '#ef4444' : itemColor }} className="text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-sm">
-                               {b.category}
-                             </span>
-                          </div>
-                          <h3 className="text-base font-black text-slate-900 truncate tracking-tight leading-tight">{b.subCategory || '未命名项目'}</h3>
-                        </div>
-                        <button onClick={(e) => { e.stopPropagation(); setQuickAddIndex(realIndex); }} style={{ backgroundColor: itemColor }} className="p-2 text-white rounded-sm shadow-lg hover:brightness-110 active:scale-90 transition-all flex-shrink-0">
-                          <Icons.Plus className="w-4 h-4" />
-                        </button>
-                      </div>
-                      <div className="relative z-10 flex justify-between items-end">
-                        <div className="min-w-0">
-                          <p className="text-2xl font-mono font-black text-slate-900 truncate">¥{b.spentThisMonth.toLocaleString()}</p>
-                          <div className="text-[9px] font-bold text-slate-300 uppercase mt-0.5">限额 ¥{b.monthlyAmount.toLocaleString()}</div>
-                        </div>
-                        <div className="text-right">
-                          {b.notes && <div className="text-[9px] text-slate-400 font-bold mb-0.5 max-w-[120px] truncate leading-none">{b.notes}</div>}
-                          <div className={`text-[10px] font-black ${isOver ? 'text-rose-500' : 'text-slate-400'}`}>{progress.toFixed(0)}%</div>
-                        </div>
-                      </div>
-                    </div>
+                    <BudgetCard 
+                      key={realIndex} 
+                      budget={b} 
+                      index={realIndex} 
+                      themeColor={themeColor} 
+                      onUpdate={handleUpdateBudget} 
+                      onEditFull={setEditingBudgetIndex} 
+                      onQuickAdd={setQuickAddIndex} 
+                    />
                   );
                 })}
               </div>
@@ -650,21 +657,72 @@ const App: React.FC = () => {
 
       {showDistribution && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in zoom-in-95 duration-300" onClick={() => setShowDistribution(null)}>
-          <div className="bg-white rounded-sm w-full max-w-lg p-8 shadow-2xl border border-white/20" onClick={e => e.stopPropagation()}>
-            <div className="flex justify-between items-center mb-8">
+          <div className="bg-white rounded-sm w-full max-w-lg p-8 shadow-2xl border border-white/20 overflow-y-auto max-h-[90vh]" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-6">
               <h2 className="text-xl font-black text-slate-900 uppercase tracking-tighter">{showDistribution === 'asset' ? '资产构成分析' : '预算额度分布'}</h2>
               <button onClick={() => setShowDistribution(null)} className="text-slate-400 hover:text-slate-900 font-black text-[10px] uppercase tracking-widest">关闭</button>
             </div>
-            <div className="h-[350px] w-full">
+            
+            <div className="h-[250px] w-full mb-6">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
-                  <Pie data={showDistribution === 'asset' ? assetDistributionData : budgetDistributionData} cx="50%" cy="45%" innerRadius={60} outerRadius={100} paddingAngle={5} dataKey="value" stroke="none">
-                    {(showDistribution === 'asset' ? assetDistributionData : budgetDistributionData).map((entry, index) => <Cell key={`cell-${index}`} fill={showDistribution === 'asset' ? (CategoryColors[entry.name as keyof typeof CategoryColors] || themeColor) : THEME_COLORS[index % THEME_COLORS.length]} />)}
+                  <Pie 
+                    data={showDistribution === 'asset' ? assetDistributionData : budgetDistributionData} 
+                    cx="50%" 
+                    cy="50%" 
+                    innerRadius={60} 
+                    outerRadius={90} 
+                    paddingAngle={5} 
+                    dataKey="value" 
+                    stroke="none"
+                  >
+                    {(showDistribution === 'asset' ? assetDistributionData : budgetDistributionData).map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={showDistribution === 'asset' ? (CategoryColors[entry.name as keyof typeof CategoryColors] || themeColor) : THEME_COLORS[index % THEME_COLORS.length]} />
+                    ))}
                   </Pie>
-                  <Tooltip formatter={(value: number) => [`¥${value.toLocaleString()}`, '总额']} contentStyle={{ borderRadius: '2px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', fontSize: '10px', fontWeight: 900 }} />
-                  <Legend verticalAlign="bottom" height={36} iconType="rect" formatter={(value) => <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">{value}</span>} />
+                  <Tooltip 
+                    formatter={(value: number) => [`¥${value.toLocaleString()}`, '金额']} 
+                    contentStyle={{ borderRadius: '2px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', fontSize: '10px', fontWeight: 900 }} 
+                  />
                 </PieChart>
               </ResponsiveContainer>
+            </div>
+
+            <div className="space-y-2 pt-4 border-t border-slate-100">
+               <div className="flex justify-between text-[8px] font-black text-slate-400 uppercase tracking-widest mb-2 px-1">
+                 <span>分类名称</span>
+                 <div className="flex gap-8">
+                   <span>占比</span>
+                   <span className="w-20 text-right">金额</span>
+                 </div>
+               </div>
+               {[...(showDistribution === 'asset' ? assetDistributionData : budgetDistributionData)].sort((a,b) => b.value - a.value).map((item, index) => {
+                 const total = (showDistribution === 'asset' ? assetDistributionData : budgetDistributionData).reduce((sum, i) => sum + i.value, 0);
+                 const percent = total > 0 ? (item.value / total * 100).toFixed(1) : '0.0';
+                 const color = showDistribution === 'asset' ? (CategoryColors[item.name as keyof typeof CategoryColors] || themeColor) : THEME_COLORS[index % THEME_COLORS.length];
+                 
+                 return (
+                   <div key={item.name} className="flex justify-between items-center p-3 bg-slate-50 rounded-sm border border-slate-100 hover:border-slate-200 transition-colors">
+                     <div className="flex items-center gap-2">
+                       <div className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
+                       <span className="text-[10px] font-black text-slate-700 uppercase tracking-tighter">{item.name}</span>
+                     </div>
+                     <div className="flex gap-8 items-center font-mono">
+                       <span className="text-[10px] font-bold text-slate-400">{percent}%</span>
+                       <span className="text-[11px] font-black text-slate-900 w-20 text-right">¥{item.value.toLocaleString()}</span>
+                     </div>
+                   </div>
+                 );
+               })}
+               <div 
+                 className="flex justify-between items-center p-3 mt-4 rounded-sm transition-colors duration-500"
+                 style={{ backgroundColor: themeColor, color: isThemeDark ? '#fff' : '#0f172a' }}
+               >
+                 <span className="text-[10px] font-black uppercase tracking-widest">总计</span>
+                 <span className="text-[12px] font-mono font-black">
+                   ¥{(showDistribution === 'asset' ? assetDistributionData : budgetDistributionData).reduce((sum, i) => sum + i.value, 0).toLocaleString()}
+                 </span>
+               </div>
             </div>
           </div>
         </div>
@@ -693,6 +751,75 @@ const App: React.FC = () => {
       )}
       <AddAssetModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onAdd={(newAsset) => setAssets([...assets, { ...newAsset, id: Math.random().toString(36).substr(2, 9), currency: 'CNY', lastUpdated: new Date().toLocaleDateString('zh-CN'), history: [{ date: new Date().toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' }), value: newAsset.value }] }])} assetCategoryList={assetCategoryList} />
       {editingAsset && <AddAssetModal isOpen={!!editingAsset} onClose={() => setEditingAsset(null)} onAdd={(data) => { handleUpdateAsset(editingAsset.id, data); setEditingAsset(null); }} initialData={editingAsset} assetCategoryList={assetCategoryList} />}
+      
+      {quickAddIndex !== null && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-xl animate-in fade-in duration-300">
+          <div className="bg-white rounded-sm w-full max-sm:w-full max-w-sm p-8 shadow-2xl border border-white/20">
+            <h2 className="text-xl font-black mb-6 text-slate-900 uppercase tracking-tighter">记一笔 {budgets[quickAddIndex].category}{budgets[quickAddIndex].subCategory ? ` · ${budgets[quickAddIndex].subCategory}` : ''}</h2>
+            <input type="number" autoFocus className="w-full text-4xl font-mono font-black text-slate-900 border-b-4 py-4 mb-8 focus:outline-none" style={{ borderColor: budgets[quickAddIndex].color || themeColor }} placeholder="0.00" value={quickAmount} onChange={e => setQuickAmount(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleQuickAdd()} />
+            <div className="flex gap-4">
+              <button onClick={() => setQuickAddIndex(null)} className="flex-1 py-4 font-black text-xs uppercase text-slate-400 tracking-widest">取消</button>
+              <button onClick={handleQuickAdd} style={{ backgroundColor: budgets[quickAddIndex].color || themeColor }} className="flex-1 py-4 text-white font-black text-xs uppercase tracking-widest rounded-sm shadow-xl active:scale-95 transition-all">确认记账</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editingBudgetIndex !== null && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-xl animate-in zoom-in-95 duration-300">
+          <div className="bg-white rounded-sm w-full max-sm:max-w-xs max-w-sm p-8 shadow-2xl overflow-y-auto max-h-[90vh]">
+            <h2 className="text-xl font-black mb-8 text-slate-900 uppercase">编辑预算项目</h2>
+            <div className="space-y-6">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">分类</label>
+                  <select className="w-full px-4 py-3 border border-slate-200 rounded-sm font-bold bg-slate-50" value={budgets[editingBudgetIndex].category} onChange={e => handleUpdateBudget(editingBudgetIndex, { category: e.target.value })}>
+                    {budgetCategoryList.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">名称</label>
+                  <input type="text" className="w-full px-4 py-3 border border-slate-200 rounded-sm font-bold" value={budgets[editingBudgetIndex].subCategory || ''} onChange={e => handleUpdateBudget(editingBudgetIndex, { subCategory: e.target.value })} placeholder="如：餐饮"/>
+                </div>
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">月度额度 (¥)</label>
+                <input type="number" className="w-full px-4 py-3 border border-slate-200 rounded-sm font-bold" value={budgets[editingBudgetIndex].monthlyAmount} onChange={e => handleUpdateBudget(editingBudgetIndex, { monthlyAmount: parseFloat(e.target.value) || 0 })} />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">备注信息</label>
+                <input type="text" className="w-full px-4 py-3 border border-slate-200 rounded-sm font-bold" value={budgets[editingBudgetIndex].notes || ''} onChange={e => handleUpdateBudget(editingBudgetIndex, { notes: e.target.value })} />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">预算色值</label>
+                <div className="grid grid-cols-6 gap-2">
+                   {THEME_COLORS.map(color => (
+                     <button 
+                       key={color} 
+                       onClick={() => handleUpdateBudget(editingBudgetIndex, { color })} 
+                       style={{ backgroundColor: color }} 
+                       className={`w-full aspect-square rounded-sm border ${budgets[editingBudgetIndex].color === color ? 'border-slate-900 ring-2 ring-slate-900/10' : 'border-slate-100'}`}
+                     />
+                   ))}
+                </div>
+              </div>
+            </div>
+            <button onClick={() => setEditingBudgetIndex(null)} style={{ backgroundColor: budgets[editingBudgetIndex].color || themeColor }} className="w-full mt-10 py-4 text-white font-black text-xs uppercase tracking-widest rounded-sm shadow-lg active:scale-95 transition-all">保存</button>
+          </div>
+        </div>
+      )}
+
+      {editingCategory && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm" onClick={() => setEditingCategory(null)}>
+          <div className="bg-white p-6 rounded shadow-2xl font-bold text-slate-900 text-sm max-w-xs text-center animate-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
+            <p className="mb-4">是否重命名分类 "{editingCategory.name}"？</p>
+            <div className="flex gap-3">
+              <button onClick={() => setEditingCategory(null)} className="flex-1 py-2 text-slate-400 text-xs font-black uppercase">取消</button>
+              <button onClick={handleRenameCategory} style={{ backgroundColor: themeColor }} className="flex-1 py-2 text-white rounded-sm text-xs font-black uppercase tracking-widest">确认重命名</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
