@@ -7,18 +7,35 @@ import BudgetCard from './components/BudgetCard';
 import AddAssetModal from './components/AddAssetModal';
 import { AreaChart, Area, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid, PieChart, Pie, Cell, Legend } from 'recharts';
 
+// Helper to ensure date comparison works with both YYYY-MM-DD and MM/DD legacy formats
+const parseDate = (dateStr: string) => {
+  if (dateStr.includes('-')) return new Date(dateStr).getTime();
+  const [m, d] = dateStr.split('/').map(Number);
+  const year = new Date().getFullYear();
+  return new Date(year, m - 1, d).getTime();
+};
+
 const generateMockHistory = (baseValue: number): HistoryPoint[] => {
   const history: HistoryPoint[] = [];
   const today = new Date();
-  for (let i = 15; i >= 0; i--) {
+  let currentValue = baseValue;
+  // Generate roughly 1 year of data, every 3 days to keep it efficient but detailed enough
+  for (let i = 0; i < 120; i++) {
     const d = new Date(today);
-    d.setDate(d.getDate() - Math.floor(i / 1.5));
+    d.setDate(d.getDate() - (i * 3));
+    const dateStr = d.toISOString().split('T')[0];
+    
+    // Add point
     history.push({
-      date: d.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' }),
-      value: baseValue * (0.8 + Math.random() * 0.4)
+      date: dateStr,
+      value: currentValue
     });
+
+    // Random walk backwards
+    const change = (Math.random() - 0.5) * 0.05; // +/- 2.5% variation
+    currentValue = currentValue / (1 + change);
   }
-  return history;
+  return history.reverse();
 };
 
 const DEFAULT_BUDGET_CATEGORIES = ['生活', '投资', '其他'];
@@ -73,7 +90,7 @@ const FilterBar = memo(({ selected, onSelect, categories, onAdd, type, themeColo
               borderColor: selected === cat ? themeColor : '#e2e8f0',
               color: selected === cat ? (isThemeDark ? 'white' : '#0f172a') : '#94a3b8'
             }}
-            className={`px-4 h-9 rounded-sm text-[10px] font-black uppercase tracking-widest whitespace-nowrap transition-all border shadow-sm flex items-center justify-center flex-shrink-0 active:scale-95`}
+            className={`px-4 h-9 rounded text-[10px] font-black uppercase tracking-widest whitespace-nowrap transition-all border shadow-sm flex items-center justify-center flex-shrink-0 active:scale-95`}
           >
             {cat as string}
           </button>
@@ -81,7 +98,7 @@ const FilterBar = memo(({ selected, onSelect, categories, onAdd, type, themeColo
         {onAdd && (
           <button
             onClick={onAdd}
-            className="px-4 h-9 rounded-sm text-[10px] font-black uppercase tracking-widest bg-slate-100 text-slate-400 border border-slate-200 hover:border-slate-400 flex items-center justify-center flex-shrink-0 transition-all hover:bg-slate-200 active:scale-95"
+            className="px-4 h-9 rounded text-[10px] font-black uppercase tracking-widest bg-slate-100 text-slate-400 border border-slate-200 hover:border-slate-400 flex items-center justify-center flex-shrink-0 transition-all hover:bg-slate-200 active:scale-95"
           >
             + 新增
           </button>
@@ -126,6 +143,7 @@ const App: React.FC = () => {
   const [themeColor, setThemeColor] = useState(() => localStorage.getItem('app_theme') || '#ef4444');
   const [viewingAssetChart, setViewingAssetChart] = useState<Asset | null>(null);
   const [showGlobalChart, setShowGlobalChart] = useState(false);
+  const [chartRange, setChartRange] = useState<'30d' | '1y'>('30d');
   const [showDistribution, setShowDistribution] = useState<'asset' | 'budget' | null>(null);
   const [importText, setImportText] = useState('');
 
@@ -139,6 +157,9 @@ const App: React.FC = () => {
 
   const [isAssetCatExpanded, setIsAssetCatExpanded] = useState(false);
   const [isBudgetCatExpanded, setIsBudgetCatExpanded] = useState(false);
+
+  // New state for scroll collapsing
+  const [isScrolled, setIsScrolled] = useState(false);
 
   const longPressTimer = useRef<number | null>(null);
 
@@ -176,6 +197,17 @@ const App: React.FC = () => {
       const randomIndex = Math.floor(Math.random() * THEME_COLORS.length);
       setThemeColor(THEME_COLORS[randomIndex]);
     }
+  }, []);
+
+  // Scroll listener for collapsing effect
+  useEffect(() => {
+    const handleScroll = () => {
+      const scrolled = window.scrollY > 20;
+      setIsScrolled(scrolled);
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
   useEffect(() => localStorage.setItem('assets_data', JSON.stringify(assets)), [assets]);
@@ -232,26 +264,77 @@ const App: React.FC = () => {
     return Object.entries(distribution).map(([name, value]) => ({ name, value }));
   }, [budgets]);
 
+  // Correct calculation of global history by aligning dates
   const globalHistory = useMemo(() => {
     if (assets.length === 0) return [];
-    const longestIdx = assets.reduce((max, a, idx) => a.history.length > assets[max].history.length ? idx : max, 0);
-    return assets[longestIdx].history.map((point, idx) => {
+    
+    // 1. Collect all unique dates
+    const allDates = new Set<string>();
+    assets.forEach(a => a.history.forEach(h => allDates.add(h.date)));
+    
+    // 2. Sort dates chronologically
+    const sortedDates = Array.from(allDates).sort((a, b) => parseDate(a) - parseDate(b));
+
+    // 3. Calculate total value for each date
+    return sortedDates.map(date => {
       let total = 0;
-      assets.forEach(a => {
-        const valAtIdx = a.history[idx]?.value || 0;
-        if (a.category === AssetCategory.LIABILITY) total -= valAtIdx;
-        else total += valAtIdx;
+      const targetTime = parseDate(date);
+
+      assets.forEach(asset => {
+        // Find exact match or the closest previous record
+        // This ensures if an asset wasn't updated on this specific date, we use its last known value
+        // instead of 0 (which would cause a dip).
+        
+        let val = 0;
+        const exactMatch = asset.history.find(h => h.date === date);
+        
+        if (exactMatch) {
+            val = exactMatch.value;
+        } else {
+            // Find the latest point that is before or equal to targetTime
+            let closest = null;
+            // Assuming history is sorted, we can iterate or filter. 
+            // Since we generated history sorted, let's assume it is roughly sorted or scan it.
+            // A simple scan is safe for small datasets.
+            let maxTime = -1;
+            
+            for (const h of asset.history) {
+                const hTime = parseDate(h.date);
+                if (hTime <= targetTime && hTime > maxTime) {
+                    maxTime = hTime;
+                    closest = h;
+                }
+            }
+            if (closest) val = closest.value;
+        }
+
+        if (asset.category === AssetCategory.LIABILITY) total -= val;
+        else total += val;
       });
-      return { date: point.date, value: total };
+      return { date, value: total };
     });
   }, [assets]);
+
+  // Filter history based on selected range
+  const getChartData = (data: HistoryPoint[]) => {
+      if (!data || data.length === 0) return [];
+      
+      const now = new Date().getTime();
+      const cutoff = chartRange === '30d' 
+          ? now - (30 * 24 * 60 * 60 * 1000)
+          : new Date(new Date().getFullYear(), 0, 1).getTime(); // Start of year
+
+      return data.filter(point => parseDate(point.date) >= cutoff);
+  };
 
   const handleUpdateAsset = useCallback((id: string, updates: Partial<Asset>) => {
     setAssets(prev => prev.map(a => {
       if (a.id === id) {
         const newValue = updates.value !== undefined ? updates.value : a.value;
+        // Use standard YYYY-MM-DD for new entries to ensure sorting works best
+        const todayStr = new Date().toISOString().split('T')[0];
         const newHistory = updates.value !== undefined 
-          ? [...a.history, { date: new Date().toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' }), value: newValue }]
+          ? [...a.history, { date: todayStr, value: newValue }]
           : a.history;
         return { 
           ...a, 
@@ -412,6 +495,28 @@ const App: React.FC = () => {
     }));
   };
 
+  const handleDeleteBudget = () => {
+    if (editingBudgetIndex === null) return;
+    if (!confirm('确定要删除这个预算项目吗？')) return;
+
+    setBudgets(prev => {
+      const newBudgets = prev.filter((_, i) => i !== editingBudgetIndex);
+      
+      const categoriesOnly = newBudgets.filter(b => b.category !== '总计');
+      const totalIdx = newBudgets.findIndex(b => b.category === '总计');
+      
+      if (totalIdx !== -1) {
+        newBudgets[totalIdx] = {
+          ...newBudgets[totalIdx],
+          monthlyAmount: categoriesOnly.reduce((sum, b) => sum + b.monthlyAmount, 0),
+          spentThisMonth: categoriesOnly.reduce((sum, b) => sum + b.spentThisMonth, 0)
+        };
+      }
+      return newBudgets;
+    });
+    setEditingBudgetIndex(null);
+  };
+
   const handleExportData = () => {
     const data = { assets, budgets, budgetCategoryList, assetCategoryList, themeColor, isAutoTheme, customCategoryColors };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -460,20 +565,20 @@ const App: React.FC = () => {
   const CategoryManager = ({ list, colorsMap, onAdd, onRename, onDelete, onMove, onColorChange, type }: { list: string[], colorsMap: Record<string, string>, onAdd: () => void, onRename: (n: string, t: any) => void, onDelete: (n: string, t: any) => void, onMove: (idx: number, dir: 'up' | 'down', t: any) => void, onColorChange: (n: string, c: string) => void, type: 'asset' | 'budget' }) => (
     <div className="space-y-2 mt-4 animate-in slide-in-from-top-2 duration-300">
       {list.map((cat, idx) => (
-        <div key={cat} className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-sm group transition-all hover:border-slate-300 relative">
+        <div key={cat} className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded group transition-all hover:border-slate-300 relative">
           <div className="flex items-center gap-3">
              <div className="relative group/color">
                 <button 
                    className="w-4 h-4 rounded-full border border-white shadow-sm transition-transform active:scale-90"
                    style={{ backgroundColor: colorsMap[cat] || '#64748b' }}
                 />
-                <div className="absolute left-0 top-6 hidden group-hover/color:grid grid-cols-6 gap-2 p-3 bg-white shadow-2xl border border-slate-200 rounded-sm z-[100] w-max min-w-[150px]">
+                <div className="absolute left-0 top-6 hidden group-hover/color:grid grid-cols-6 gap-2 p-3 bg-white shadow-2xl border border-slate-200 rounded z-[100] w-max min-w-[150px]">
                    {THEME_COLORS.map(c => (
                      <button 
                         key={c} 
                         onClick={() => onColorChange(cat, c)} 
                         style={{ backgroundColor: c }} 
-                        className="w-4 h-4 rounded-sm hover:scale-110 active:scale-90 transition-transform shadow-sm border border-black/5" 
+                        className="w-4 h-4 rounded hover:scale-110 active:scale-90 transition-transform shadow-sm border border-black/5" 
                      />
                    ))}
                 </div>
@@ -496,7 +601,7 @@ const App: React.FC = () => {
           </div>
         </div>
       ))}
-      <button onClick={onAdd} style={{ borderColor: `${themeColor}40` }} className="w-full py-2 border-2 border-dashed text-slate-400 text-[10px] font-black uppercase tracking-widest rounded-sm hover:border-slate-400 hover:text-slate-600 transition-all active:scale-[0.98]">
+      <button onClick={onAdd} style={{ borderColor: `${themeColor}40` }} className="w-full py-2 border-2 border-dashed text-slate-400 text-[10px] font-black uppercase tracking-widest rounded hover:border-slate-400 hover:text-slate-600 transition-all active:scale-[0.98]">
         + 新增分类
       </button>
     </div>
@@ -515,29 +620,29 @@ const App: React.FC = () => {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
               <div className="lg:col-span-1 space-y-6">
                 <section 
-                  className="text-white p-6 rounded-sm shadow-xl relative overflow-hidden transition-all duration-1000 h-[180px] flex flex-col justify-between"
+                  className={`text-white rounded shadow-2xl relative overflow-hidden transition-all duration-500 flex flex-col justify-between sticky top-4 z-20 ${isScrolled ? 'h-[110px] py-5 px-6 shadow-xl' : 'h-[180px] p-6 shadow-[0_20px_50px_-12px_rgba(0,0,0,0.35)]'}`}
                   style={{ backgroundColor: themeColor, background: `linear-gradient(135deg, ${themeColor} 0%, ${themeColor}CC 100%)` }}
                 >
                   <div className="flex justify-between items-start relative z-10">
                     <h2 className="text-white/60 text-[10px] font-black uppercase tracking-[0.2em]">净资产规模</h2>
                     <div className="flex gap-2">
-                      <button onClick={() => setShowDistribution('asset')} className="h-8 w-8 flex items-center justify-center bg-white/10 hover:bg-white/20 rounded-sm text-white border border-white/10 transition-colors">
+                      <button onClick={() => setShowDistribution('asset')} className="h-8 w-8 flex items-center justify-center bg-white/10 hover:bg-white/20 rounded text-white border border-white/10 transition-colors">
                         <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 2v10l8.5 5"/></svg>
                       </button>
-                      <button onClick={() => setShowGlobalChart(true)} className="h-8 w-8 flex items-center justify-center bg-white/10 hover:bg-white/20 rounded-sm text-white border border-white/10 transition-colors">
+                      <button onClick={() => setShowGlobalChart(true)} className="h-8 w-8 flex items-center justify-center bg-white/10 hover:bg-white/20 rounded text-white border border-white/10 transition-colors">
                         <Icons.Chart className="w-4 h-4" />
                       </button>
                     </div>
                   </div>
-                  <div className="text-3xl font-mono font-black relative z-10 tracking-tighter text-white">
+                  <div className={`font-mono font-black relative z-10 tracking-tighter text-white transition-all duration-500 ${isScrolled ? 'text-3xl translate-y-[-4px]' : 'text-3xl'}`}>
                     {new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY', maximumFractionDigits: 0 }).format(stats.netWorth)}
                   </div>
-                  <div className="grid grid-cols-2 gap-3 relative z-10 border-t border-white/10 pt-3">
-                    <div className="bg-white/10 p-2 rounded-sm border border-white/5">
+                  <div className={`grid grid-cols-2 gap-3 relative z-10 border-t border-white/10 pt-3 transition-all duration-500 origin-bottom ${isScrolled ? 'opacity-0 h-0 scale-y-0 overflow-hidden mt-0' : 'opacity-100 h-auto scale-y-100'}`}>
+                    <div className="bg-white/10 p-2 rounded border border-white/5">
                       <span className="text-[8px] font-black text-white/50 uppercase block">总资产</span>
                       <span className="text-sm font-bold text-white">¥{stats.totalAssets.toLocaleString()}</span>
                     </div>
-                    <div className="bg-black/10 p-2 rounded-sm border border-white/5 text-right">
+                    <div className="bg-black/10 p-2 rounded border border-white/5 text-right">
                       <span className="text-[8px] font-black text-white/50 uppercase block">负债</span>
                       <span className="text-sm font-bold text-rose-200">-¥{stats.totalLiabilities.toLocaleString()}</span>
                     </div>
@@ -562,7 +667,7 @@ const App: React.FC = () => {
                       />
                     </div>
                   </div>
-                  <button onClick={() => setIsModalOpen(true)} className="flex items-center justify-center gap-2 text-white px-5 h-10 rounded-sm text-[10px] font-black uppercase tracking-widest transition-all shadow-md active:scale-95 flex-shrink-0 md:mt-6" style={{ backgroundColor: themeColor }}>
+                  <button onClick={() => setIsModalOpen(true)} className="flex items-center justify-center gap-2 text-white px-5 h-10 rounded text-[10px] font-black uppercase tracking-widest transition-all shadow-md active:scale-95 flex-shrink-0 md:mt-6" style={{ backgroundColor: themeColor }}>
                     <Icons.Plus className="w-4 h-4" /> <span>新增账户</span>
                   </button>
                 </div>
@@ -578,25 +683,25 @@ const App: React.FC = () => {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
               <div className="lg:col-span-1 space-y-6">
                 <section 
-                  className="text-white p-6 rounded-sm shadow-xl relative overflow-hidden transition-all duration-1000 h-[180px] flex flex-col justify-between"
+                  className={`text-white rounded shadow-2xl relative overflow-hidden transition-all duration-500 flex flex-col justify-between sticky top-4 z-20 ${isScrolled ? 'h-[110px] py-5 px-6 shadow-xl' : 'h-[180px] p-6 shadow-[0_20px_50px_-12px_rgba(0,0,0,0.35)]'}`}
                   style={{ backgroundColor: themeColor, background: `linear-gradient(135deg, ${themeColor} 0%, ${themeColor}CC 100%)` }}
                 >
                   <div className="flex justify-between items-start relative z-10">
                     <h2 className="text-white/60 text-[10px] font-black uppercase tracking-[0.2em]">月度预算剩余</h2>
                     <div className="flex gap-2 items-center">
-                      <button onClick={() => setShowDistribution('budget')} className="h-8 w-8 flex items-center justify-center bg-white/10 hover:bg-white/20 rounded-sm text-white border border-white/10 transition-colors">
+                      <button onClick={() => setShowDistribution('budget')} className="h-8 w-8 flex items-center justify-center bg-white/10 hover:bg-white/20 rounded text-white border border-white/10 transition-colors">
                         <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 2v10l8.5 5"/></svg>
                       </button>
-                      <div className="h-8 px-2 flex items-center bg-white/10 rounded-sm text-[10px] font-black border border-white/10 tracking-widest">
+                      <div className="h-8 px-2 flex items-center bg-white/10 rounded text-[10px] font-black border border-white/10 tracking-widest">
                         {Math.round((budgetStats.spent / (budgetStats.limit || 1)) * 100)}%
                       </div>
                     </div>
                   </div>
-                  <div className="text-3xl font-mono font-black relative z-10 tracking-tighter text-white">
+                  <div className={`font-mono font-black relative z-10 tracking-tighter text-white transition-all duration-500 ${isScrolled ? 'text-3xl translate-y-[-4px]' : 'text-3xl'}`}>
                     {new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY', maximumFractionDigits: 0 }).format(budgetStats.remaining)}
                   </div>
-                  <div className="grid grid-cols-2 gap-3 relative z-10 border-t border-white/10 pt-3">
-                    <div className="bg-white/10 p-2 rounded-sm border border-white/5 overflow-hidden">
+                  <div className={`grid grid-cols-2 gap-3 relative z-10 border-t border-white/10 pt-3 transition-all duration-500 origin-bottom ${isScrolled ? 'opacity-0 h-0 scale-y-0 overflow-hidden mt-0' : 'opacity-100 h-auto scale-y-100'}`}>
+                    <div className="bg-white/10 p-2 rounded border border-white/5 overflow-hidden">
                       <span className="text-[8px] font-black text-white/50 uppercase block">总预算</span>
                       {isEditingTotalLimit ? (
                         <input 
@@ -606,18 +711,18 @@ const App: React.FC = () => {
                           onChange={(e) => setTempTotalLimit(e.target.value)}
                           onBlur={handleSaveTotalLimit}
                           onKeyDown={(e) => e.key === 'Enter' && handleSaveTotalLimit()}
-                          className="w-full bg-white/20 text-white font-bold text-sm px-1 rounded-sm outline-none border-none"
+                          className="w-full bg-white/20 text-white font-bold text-sm px-1 rounded outline-none border-none"
                         />
                       ) : (
                         <span 
                           onClick={() => { setIsEditingTotalLimit(true); setTempTotalLimit(budgetStats.limit.toString()); }}
-                          className="text-sm font-bold text-white cursor-pointer hover:bg-white/5 px-0.5 rounded-sm transition-colors block"
+                          className="text-sm font-bold text-white cursor-pointer hover:bg-white/5 px-0.5 rounded transition-colors block"
                         >
                           ¥{budgetStats.limit.toLocaleString()}
                         </span>
                       )}
                     </div>
-                    <div className="bg-black/10 p-2 rounded-sm border border-white/5 text-right">
+                    <div className="bg-black/10 p-2 rounded border border-white/5 text-right">
                       <span className="text-[8px] font-black text-white/50 uppercase block">已确认支出</span>
                       <span className="text-sm font-bold text-white">¥{budgetStats.spent.toLocaleString()}</span>
                     </div>
@@ -662,7 +767,7 @@ const App: React.FC = () => {
           </div>
           <div className="w-full flex-shrink-0 px-4">
             <div className="max-w-2xl mx-auto space-y-8">
-              <div className="bg-white border border-slate-200 rounded-sm shadow-sm overflow-hidden p-8 space-y-8">
+              <div className="bg-white border border-slate-200 rounded shadow-sm overflow-hidden p-8 space-y-8">
                 <div className="-mx-8 -mt-8 px-8 py-6 mb-2" style={{ background: `linear-gradient(135deg, ${themeColor}, ${themeColor}22)` }}>
                   <h2 className={`text-2xl font-black uppercase tracking-tighter ${isThemeDark ? 'text-white' : 'text-slate-900'}`}>应用设置</h2>
                 </div>
@@ -670,12 +775,12 @@ const App: React.FC = () => {
                   <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">应用主题色</label>
                   <div className="grid grid-cols-5 md:grid-cols-10 gap-3">
                     {THEME_COLORS.map(color => (
-                      <button key={color} onClick={() => { setThemeColor(color); setIsAutoTheme(false); }} style={{ backgroundColor: color }} className={`w-full aspect-square rounded-sm border-2 ${themeColor === color ? 'border-slate-900 ring-4 ring-slate-900/10' : 'border-slate-100'} transition-all hover:scale-105 active:scale-95`} />
+                      <button key={color} onClick={() => { setThemeColor(color); setIsAutoTheme(false); }} style={{ backgroundColor: color }} className={`w-full aspect-square rounded border-2 ${themeColor === color ? 'border-slate-900 ring-4 ring-slate-900/10' : 'border-slate-100'} transition-all hover:scale-105 active:scale-95`} />
                     ))}
                   </div>
                 </section>
                 <div className="grid grid-cols-1 gap-4 pt-6 border-t border-slate-100">
-                  <div className="border border-slate-100 rounded-sm overflow-hidden">
+                  <div className="border border-slate-100 rounded overflow-hidden">
                     <button onClick={() => setIsAssetCatExpanded(!isAssetCatExpanded)} className="w-full flex items-center justify-between p-4 bg-slate-50 hover:bg-slate-100 transition-colors">
                       <label className="block text-[10px] font-black text-slate-600 uppercase tracking-widest cursor-pointer">资产分类管理</label>
                       <div className={`transition-transform duration-300 ${isAssetCatExpanded ? 'rotate-180' : ''}`}>
@@ -684,7 +789,7 @@ const App: React.FC = () => {
                     </button>
                     {isAssetCatExpanded && <div className="p-4 border-t border-slate-100"><CategoryManager list={assetCategoryList} colorsMap={customCategoryColors} onAdd={handleAddAssetCategory} onRename={handleRenameCategoryAction} onDelete={handleDeleteCategoryAction} onMove={handleMoveCategoryAction} onColorChange={handleUpdateCategoryColor} type="asset" /></div>}
                   </div>
-                  <div className="border border-slate-100 rounded-sm overflow-hidden">
+                  <div className="border border-slate-100 rounded overflow-hidden">
                     <button onClick={() => setIsBudgetCatExpanded(!isBudgetCatExpanded)} className="w-full flex items-center justify-between p-4 bg-slate-50 hover:bg-slate-100 transition-colors">
                       <label className="block text-[10px] font-black text-slate-600 uppercase tracking-widest cursor-pointer">预算大类管理</label>
                       <div className={`transition-transform duration-300 ${isBudgetCatExpanded ? 'rotate-180' : ''}`}>
@@ -698,10 +803,10 @@ const App: React.FC = () => {
                   <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">数据管理</label>
                   <div className="flex flex-col gap-4">
                     <div className="flex gap-4">
-                        <button onClick={handleExportData} className="flex-1 py-3 bg-slate-50 text-slate-600 font-bold text-[10px] uppercase tracking-widest border border-slate-200 rounded-sm hover:bg-slate-100 transition-all active:scale-[0.98]">导出备份</button>
-                        <button onClick={handleImportData} style={{ backgroundColor: themeColor }} className="flex-1 py-3 text-white font-black text-[10px] uppercase tracking-widest rounded-sm hover:brightness-110 shadow-md transition-all active:scale-[0.98]">导入恢复</button>
+                        <button onClick={handleExportData} className="flex-1 py-3 bg-slate-50 text-slate-600 font-bold text-[10px] uppercase tracking-widest border border-slate-200 rounded hover:bg-slate-100 transition-all active:scale-[0.98]">导出备份</button>
+                        <button onClick={handleImportData} style={{ backgroundColor: themeColor }} className="flex-1 py-3 text-white font-black text-[10px] uppercase tracking-widest rounded hover:brightness-110 shadow-md transition-all active:scale-[0.98]">导入恢复</button>
                     </div>
-                    <button onClick={handleClearData} className="w-full py-3 bg-rose-50 text-rose-600 border border-rose-200 font-black text-[10px] uppercase tracking-widest rounded-sm hover:bg-rose-100 transition-all active:scale-[0.98]">
+                    <button onClick={handleClearData} className="w-full py-3 bg-rose-50 text-rose-600 border border-rose-200 font-black text-[10px] uppercase tracking-widest rounded hover:bg-rose-100 transition-all active:scale-[0.98]">
                         清空数据 (保留模板)
                     </button>
                   </div>
@@ -712,13 +817,13 @@ const App: React.FC = () => {
         </div>
       </main>
       <div className="fixed bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-slate-50 via-slate-50/80 to-transparent pointer-events-none z-30" />
-      <nav className="fixed bottom-8 left-1/2 -translate-x-1/2 w-auto min-w-[320px] max-w-lg z-40 h-16 flex items-center justify-center gap-3 px-3 rounded-xl shadow-[0_12px_40px_-10px_rgba(0,0,0,0.15)] transition-all duration-700 border border-slate-200 bg-white backdrop-blur-md">
+      <nav className="fixed bottom-8 left-1/2 -translate-x-1/2 w-auto min-w-[320px] max-w-lg z-40 h-16 flex items-center justify-center gap-3 px-3 rounded-lg shadow-[0_12px_40px_-10px_rgba(0,0,0,0.15)] transition-all duration-700 border border-slate-200 bg-white backdrop-blur-md">
         {[
           { id: 'home', label: '资产', icon: Icons.Home },
           { id: 'budget', label: '预算', icon: Icons.Target },
           { id: 'settings', label: '设置', icon: Icons.Cog }
         ].map((item: any) => (
-          <button key={item.id} onClick={() => setActiveTab(item.id)} style={{ backgroundColor: activeTab === item.id ? themeColor : 'transparent', color: activeTab === item.id ? (isThemeDark ? 'white' : '#0f172a') : '#94a3b8' }} className={`flex items-center justify-center h-12 flex-1 min-w-[80px] px-3 transition-all duration-300 rounded-lg overflow-hidden group border ${activeTab === item.id ? 'border-transparent' : 'border-transparent hover:border-slate-100'} active:scale-95`}>
+          <button key={item.id} onClick={() => setActiveTab(item.id)} style={{ backgroundColor: activeTab === item.id ? themeColor : 'transparent', color: activeTab === item.id ? (isThemeDark ? 'white' : '#0f172a') : '#94a3b8' }} className={`flex items-center justify-center h-12 flex-1 min-w-[80px] px-3 transition-all duration-300 rounded overflow-hidden group border ${activeTab === item.id ? 'border-transparent' : 'border-transparent hover:border-slate-100'} active:scale-95`}>
             <item.icon className={`w-5 h-5 flex-shrink-0 mr-2 transition-transform ${activeTab === item.id ? 'scale-110' : ''}`} />
             <span className="text-[11px] font-black whitespace-nowrap">{item.label}</span>
           </button>
@@ -726,7 +831,7 @@ const App: React.FC = () => {
       </nav>
       {showDistribution && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in zoom-in-95 duration-300" onClick={() => setShowDistribution(null)}>
-          <div className="bg-white rounded-sm w-full max-w-lg p-8 shadow-2xl border border-white/20 overflow-y-auto max-h-[90vh]" onClick={e => e.stopPropagation()}>
+          <div className="bg-white rounded w-full max-w-lg p-8 shadow-2xl border border-white/20 overflow-y-auto max-h-[90vh]" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-xl font-black text-slate-900 uppercase tracking-tighter">{showDistribution === 'asset' ? '资产构成分析' : '预算额度分布'}</h2>
               <button onClick={() => setShowDistribution(null)} className="text-slate-400 hover:text-slate-900 font-black text-[10px] uppercase tracking-widest">关闭</button>
@@ -749,7 +854,7 @@ const App: React.FC = () => {
                  const percent = total > 0 ? (item.value / total * 100).toFixed(1) : '0.0';
                  const color = customCategoryColors[item.name] || THEME_COLORS[index % THEME_COLORS.length];
                  return (
-                   <div key={item.name} className="flex justify-between items-center p-3 bg-slate-50 rounded-sm border border-slate-100 hover:border-slate-200 transition-colors">
+                   <div key={item.name} className="flex justify-between items-center p-3 bg-slate-50 rounded border border-slate-100 hover:border-slate-200 transition-colors">
                      <div className="flex items-center gap-2">
                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
                        <span className="text-[10px] font-black text-slate-700 uppercase tracking-tighter">{item.name}</span>
@@ -761,7 +866,7 @@ const App: React.FC = () => {
                    </div>
                  );
                })}
-               <div className="flex justify-between items-center p-3 mt-4 rounded-sm transition-colors duration-500" style={{ backgroundColor: themeColor, color: isThemeDark ? '#fff' : '#0f172a' }}>
+               <div className="flex justify-between items-center p-3 mt-4 rounded transition-colors duration-500" style={{ backgroundColor: themeColor, color: isThemeDark ? '#fff' : '#0f172a' }}>
                  <span className="text-[10px] font-black uppercase tracking-widest">总计</span>
                  <span className="text-[12px] font-mono font-black">¥{(showDistribution === 'asset' ? assetDistributionData : budgetDistributionData).reduce((sum, i) => sum + i.value, 0).toLocaleString()}</span>
                </div>
@@ -771,16 +876,35 @@ const App: React.FC = () => {
       )}
       {(viewingAssetChart || showGlobalChart) && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in zoom-in-95 duration-300">
-          <div className="bg-white rounded-sm w-full max-w-2xl p-6 shadow-2xl border border-white/20">
+          <div className="bg-white rounded w-full max-w-2xl p-6 shadow-2xl border border-white/20">
             <div className="flex justify-between items-center mb-6">
-              <h2 className="text-xl font-black text-slate-900 uppercase tracking-tighter">{showGlobalChart ? '资产趋势分析' : `${viewingAssetChart?.name} 历史波动`}</h2>
+              <div className="flex items-center gap-4">
+                  <h2 className="text-xl font-black text-slate-900 uppercase tracking-tighter">{showGlobalChart ? '资产趋势分析' : `${viewingAssetChart?.name} 历史波动`}</h2>
+                  <div className="flex bg-slate-100 p-1 rounded">
+                    <button onClick={() => setChartRange('30d')} className={`px-3 py-1 text-[10px] font-black rounded transition-all ${chartRange === '30d' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-400'}`}>30天</button>
+                    <button onClick={() => setChartRange('1y')} className={`px-3 py-1 text-[10px] font-black rounded transition-all ${chartRange === '1y' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-400'}`}>本年</button>
+                  </div>
+              </div>
               <button onClick={(e) => { e.stopPropagation(); setViewingAssetChart(null); setShowGlobalChart(false); }} className="p-2 text-slate-400 hover:text-slate-900 font-black text-[10px] uppercase">关闭</button>
             </div>
             <div className="h-72 w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={showGlobalChart ? globalHistory : viewingAssetChart?.history}>
+                <AreaChart data={getChartData(showGlobalChart ? globalHistory : (viewingAssetChart?.history || []))}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                  <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 8, fill: '#94a3b8', fontWeight: 900 }} />
+                  <XAxis 
+                    dataKey="date" 
+                    axisLine={false} 
+                    tickLine={false} 
+                    tickFormatter={(val) => {
+                       // Format date to MM-DD for cleaner x-axis
+                       try {
+                           const d = new Date(val);
+                           if (isNaN(d.getTime())) return val;
+                           return `${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getDate().toString().padStart(2, '0')}`;
+                       } catch(e) { return val; }
+                    }}
+                    tick={{ fontSize: 8, fill: '#94a3b8', fontWeight: 900 }} 
+                  />
                   <YAxis axisLine={false} tickLine={false} tickFormatter={(val) => `¥${(val/10000).toFixed(1)}w`} tick={{ fontSize: 8, fill: '#94a3b8', fontWeight: 900 }} width={50} />
                   <Tooltip formatter={(val: number) => [`¥${val.toLocaleString()}`, '金额']} contentStyle={{ borderRadius: '2px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', fontSize: '10px', fontWeight: 900 }} />
                   <Area type="monotone" dataKey="value" stroke={viewingAssetChart ? (viewingAssetChart.color || customCategoryColors[viewingAssetChart.category] || CategoryColors[viewingAssetChart.category as AssetCategory]) : themeColor} strokeWidth={3} fillOpacity={0.05} fill={viewingAssetChart ? (viewingAssetChart.color || customCategoryColors[viewingAssetChart.category] || CategoryColors[viewingAssetChart.category as AssetCategory]) : themeColor} dot={{ r: 3, strokeWidth: 2, fill: '#fff' }} activeDot={{ r: 5, strokeWidth: 0 }} />
@@ -793,14 +917,14 @@ const App: React.FC = () => {
                     <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3">历史记录管理</h3>
                     <div className="max-h-48 overflow-y-auto space-y-1 pr-2">
                         {[...viewingAssetChart.history].map((h, i) => ({...h, originalIndex: i})).reverse().map((point) => (
-                            <div key={point.originalIndex} className="flex items-center justify-between p-2 rounded-sm hover:bg-slate-50 group transition-colors border border-transparent hover:border-slate-100">
+                            <div key={point.originalIndex} className="flex items-center justify-between p-2 rounded hover:bg-slate-50 group transition-colors border border-transparent hover:border-slate-100">
                                 <div className="flex items-center gap-4">
                                     <span className="text-[10px] font-black text-slate-400 font-mono w-20">{point.date}</span>
                                     <span className="text-sm font-bold text-slate-700 font-mono">¥{point.value.toLocaleString()}</span>
                                 </div>
                                 <button 
                                     onClick={() => handleDeleteHistoryPoint(viewingAssetChart.id, point.originalIndex)}
-                                    className="p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-sm transition-all opacity-0 group-hover:opacity-100"
+                                    className="p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded transition-all opacity-0 group-hover:opacity-100"
                                     title="删除记录"
                                 >
                                     <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
@@ -814,44 +938,45 @@ const App: React.FC = () => {
           </div>
         </div>
       )}
-      <AddAssetModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onAdd={(newAsset) => setAssets([...assets, { ...newAsset, id: Math.random().toString(36).substr(2, 9), currency: 'CNY', lastUpdated: new Date().toLocaleDateString('zh-CN'), history: [{ date: new Date().toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' }), value: newAsset.value }] }])} assetCategoryList={assetCategoryList} />
-      {editingAsset && <AddAssetModal isOpen={!!editingAsset} onClose={() => setEditingAsset(null)} onAdd={(data) => { handleUpdateAsset(editingAsset.id, data); setEditingAsset(null); }} initialData={editingAsset} assetCategoryList={assetCategoryList} />}
-      {quickAddIndex !== null && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-xl animate-in fade-in duration-300">
-          <div className="bg-white rounded-sm w-full max-sm:w-full max-w-sm p-8 shadow-2xl border border-white/20">
-            <h2 className="text-xl font-black mb-6 text-slate-900 uppercase tracking-tighter">记一笔 {budgets[quickAddIndex].category}{budgets[quickAddIndex].subCategory ? ` · ${budgets[quickAddIndex].subCategory}` : ''}</h2>
-            <input type="number" autoFocus className="w-full text-4xl font-mono font-black text-slate-900 border-b-4 py-4 mb-8 focus:outline-none" style={{ borderColor: budgets[quickAddIndex].color || themeColor }} placeholder="0.00" value={quickAmount} onChange={e => setQuickAmount(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleQuickAdd()} />
-            <div className="flex gap-4">
-              <button onClick={() => setQuickAddIndex(null)} className="flex-1 py-4 font-black text-xs uppercase text-slate-400 tracking-widest">取消</button>
-              <button onClick={handleQuickAdd} style={{ backgroundColor: budgets[quickAddIndex].color || themeColor }} className="flex-1 py-4 text-white font-black text-xs uppercase tracking-widest rounded-sm shadow-xl active:scale-95 transition-all">确认记账</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <AddAssetModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onAdd={(newAsset) => setAssets([...assets, { ...newAsset, id: Math.random().toString(36).substr(2, 9), currency: 'CNY', lastUpdated: new Date().toLocaleDateString('zh-CN'), history: [{ date: new Date().toISOString().split('T')[0], value: newAsset.value }] }])} assetCategoryList={assetCategoryList} categoryColors={customCategoryColors} />
+      {editingAsset && <AddAssetModal 
+        isOpen={!!editingAsset} 
+        onClose={() => setEditingAsset(null)} 
+        onAdd={(data) => { handleUpdateAsset(editingAsset.id, data); setEditingAsset(null); }} 
+        initialData={editingAsset} 
+        assetCategoryList={assetCategoryList} 
+        categoryColors={customCategoryColors}
+        onDelete={() => {
+            if (confirm(`确定要删除账户 "${editingAsset.name}" 吗？`)) {
+                setAssets(prev => prev.filter(a => a.id !== editingAsset.id));
+                setEditingAsset(null);
+            }
+        }}
+      />}
       {editingBudgetIndex !== null && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-xl animate-in zoom-in-95 duration-300">
-          <div className="bg-white rounded-sm w-full max-sm:max-w-xs max-w-sm p-8 shadow-2xl overflow-y-auto max-h-[90vh]">
+          <div className="bg-white rounded w-full max-sm:max-w-xs max-w-sm p-8 shadow-2xl overflow-y-auto max-h-[90vh]">
             <h2 className="text-xl font-black mb-8 text-slate-900 uppercase">编辑预算项目</h2>
             <div className="space-y-6">
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">分类</label>
-                  <select className="w-full px-4 py-3 border border-slate-200 rounded-sm font-bold bg-slate-50" value={budgets[editingBudgetIndex].category} onChange={e => handleUpdateBudget(editingBudgetIndex, { category: e.target.value })}>
+                  <select className="w-full px-4 py-3 border border-slate-200 rounded font-bold bg-slate-50" value={budgets[editingBudgetIndex].category} onChange={e => handleUpdateBudget(editingBudgetIndex, { category: e.target.value })}>
                     {budgetCategoryList.map(cat => <option key={cat} value={cat}>{cat}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">名称</label>
-                  <input type="text" className="w-full px-4 py-3 border border-slate-200 rounded-sm font-bold" value={budgets[editingBudgetIndex].subCategory || ''} onChange={e => handleUpdateBudget(editingBudgetIndex, { subCategory: e.target.value })} placeholder="如：餐饮"/>
+                  <input type="text" className="w-full px-4 py-3 border border-slate-200 rounded font-bold" value={budgets[editingBudgetIndex].subCategory || ''} onChange={e => handleUpdateBudget(editingBudgetIndex, { subCategory: e.target.value })} placeholder="如：餐饮"/>
                 </div>
               </div>
               <div>
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">月度额度 (¥)</label>
-                <input type="number" className="w-full px-4 py-3 border border-slate-200 rounded-sm font-bold" value={budgets[editingBudgetIndex].monthlyAmount} onChange={e => handleUpdateBudget(editingBudgetIndex, { monthlyAmount: parseFloat(e.target.value) || 0 })} />
+                <input type="number" className="w-full px-4 py-3 border border-slate-200 rounded font-bold" value={budgets[editingBudgetIndex].monthlyAmount} onChange={e => handleUpdateBudget(editingBudgetIndex, { monthlyAmount: parseFloat(e.target.value) || 0 })} />
               </div>
               <div>
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">备注信息</label>
-                <input type="text" className="w-full px-4 py-3 border border-slate-200 rounded-sm font-bold" value={budgets[editingBudgetIndex].notes || ''} onChange={e => handleUpdateBudget(editingBudgetIndex, { notes: e.target.value })} />
+                <input type="text" className="w-full px-4 py-3 border border-slate-200 rounded font-bold" value={budgets[editingBudgetIndex].notes || ''} onChange={e => handleUpdateBudget(editingBudgetIndex, { notes: e.target.value })} />
               </div>
               <div>
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">预算色值</label>
@@ -861,13 +986,16 @@ const App: React.FC = () => {
                        key={color} 
                        onClick={() => handleUpdateBudget(editingBudgetIndex, { color })} 
                        style={{ backgroundColor: color }} 
-                       className={`w-full aspect-square rounded-sm border ${budgets[editingBudgetIndex].color === color ? 'border-slate-900 ring-2 ring-slate-900/10' : 'border-slate-100'}`}
+                       className={`w-full aspect-square rounded border ${budgets[editingBudgetIndex].color === color ? 'border-slate-900 ring-2 ring-slate-900/10' : 'border-slate-100'}`}
                      />
                    ))}
                 </div>
               </div>
             </div>
-            <button onClick={() => setEditingBudgetIndex(null)} style={{ backgroundColor: budgets[editingBudgetIndex].color || themeColor }} className="w-full mt-10 py-4 text-white font-black text-xs uppercase tracking-widest rounded-sm shadow-lg active:scale-95 transition-all">保存</button>
+            <div className="flex gap-4 mt-10">
+                <button onClick={handleDeleteBudget} className="px-5 py-4 text-rose-500 font-black text-xs uppercase tracking-widest hover:bg-rose-50 transition-colors border border-rose-100 rounded">删除</button>
+                <button onClick={() => setEditingBudgetIndex(null)} style={{ backgroundColor: budgets[editingBudgetIndex].color || themeColor }} className="flex-1 py-4 text-white font-black text-xs uppercase tracking-widest rounded shadow-lg active:scale-95 transition-all">保存</button>
+            </div>
           </div>
         </div>
       )}
@@ -877,7 +1005,7 @@ const App: React.FC = () => {
             <p className="mb-4">是否重命名分类 "{editingCategory.name}"？</p>
             <div className="flex gap-3">
               <button onClick={() => setEditingCategory(null)} className="flex-1 py-2 text-slate-400 text-xs font-black uppercase">取消</button>
-              <button onClick={handleRenameCategory} style={{ backgroundColor: themeColor }} className="flex-1 py-2 text-white rounded-sm text-xs font-black uppercase tracking-widest">确认重命名</button>
+              <button onClick={handleRenameCategory} style={{ backgroundColor: themeColor }} className="flex-1 py-2 text-white rounded text-xs font-black uppercase tracking-widest">确认重命名</button>
             </div>
           </div>
         </div>

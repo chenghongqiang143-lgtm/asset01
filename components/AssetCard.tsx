@@ -1,4 +1,3 @@
-
 import React, { useEffect, useRef, useState, memo } from 'react';
 import { Asset, AssetCategory, CategoryColors } from '../types';
 import { Icons } from '../constants';
@@ -67,62 +66,83 @@ const AssetCard: React.FC<AssetCardProps> = memo(({ asset, categoryColor, onDele
       onTouchStart={handleMouseDown}
       onTouchEnd={handleMouseUp}
       style={{ 
-        background: `linear-gradient(135deg, ${baseColor}, ${baseColor}EE)`,
-        boxShadow: `0 4px 12px -2px ${baseColor}40`,
-        borderColor: 'rgba(255, 255, 255, 0.15)'
+        // 使用多重渐变模拟光源：左上角亮光(Radial)，整体线性渐变(Linear)
+        // 调整了透明度 (D9=85%, BF=75%) 使色调变淡
+        background: `
+          radial-gradient(circle at 0% 0%, rgba(255,255,255,0.35) 0%, transparent 45%),
+          linear-gradient(135deg, ${baseColor}D9, ${baseColor}BF)
+        `,
+        // 增加更细腻的彩色阴影，同时也降低了阴影的不透明度
+        boxShadow: `
+          0 10px 20px -5px ${baseColor}40,
+          0 4px 6px -2px ${baseColor}20,
+          inset 0 1px 0 0 rgba(255,255,255,0.35),
+          inset 0 -1px 0 0 rgba(0,0,0,0.05)
+        `,
       }}
-      className="relative rounded-sm px-5 py-4 hover:shadow-xl transition-all duration-300 group overflow-hidden border cursor-default active:scale-[0.98] h-[130px] flex flex-col justify-between"
+      className="relative rounded px-5 py-4 transition-all duration-300 group overflow-hidden active:scale-[0.98] h-[130px] flex flex-col justify-between hover:-translate-y-1"
     >
-      <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle, #fff 1px, transparent 1px)', backgroundSize: '10px 10px' }} />
+      {/* 噪点层 - 增加物理质感 */}
+      <div className="bg-noise" />
       
-      <div className="absolute right-[-10%] bottom-[-15%] opacity-[0.08] pointer-events-none z-0 transform rotate-[15deg] text-white">
-        <Icons.CategoryIcon category={asset.category as AssetCategory} className="w-24 h-24" />
-      </div>
+      {/* 装饰背景圆点 */}
+      <div className="absolute inset-0 opacity-[0.05] pointer-events-none z-0" style={{ backgroundImage: 'radial-gradient(circle, #fff 1.5px, transparent 1.5px)', backgroundSize: '16px 16px' }} />
+      
+      {/* 移除背景右下角的图标 */}
 
+      {/* 进度条背景 */}
       {hasProgress && (
-        <div className="absolute top-0 left-0 h-full transition-all duration-1000 z-0 bg-white/10" style={{ width: `${progressPercent}%` }} />
+        <div className="absolute top-0 left-0 h-full transition-all duration-1000 z-0 bg-gradient-to-r from-white/0 via-white/5 to-white/20 mix-blend-overlay" style={{ width: `${progressPercent}%` }} />
       )}
+      {/* 进度条底部线 */}
       {hasProgress && (
-        <div className="absolute bottom-0 left-0 h-1 bg-white/30 z-10 transition-all duration-1000 ease-out" style={{ width: `${progressPercent}%` }} />
+        <div className="absolute bottom-0 left-0 h-[3px] bg-white/40 z-10 transition-all duration-1000 ease-out shadow-[0_0_10px_rgba(255,255,255,0.5)]" style={{ width: `${progressPercent}%` }} />
       )}
 
-      <div className="relative z-10 flex justify-between items-start">
-        <div className="min-w-0 pr-2">
-          <div className="flex items-center gap-1.5 mb-0.5">
-            <span className="text-[8px] font-black text-white/70 uppercase tracking-widest bg-black/10 px-1.5 py-0.5 rounded-sm">
-              {asset.category}
-            </span>
-            {asset.change24h !== undefined && !hasProgress && (
-              <span className={`text-[8px] font-bold ${isPositive ? 'text-emerald-200' : 'text-rose-200'}`}>
-                {isPositive ? '↑' : '↓'}{Math.abs(asset.change24h)}%
-              </span>
-            )}
-          </div>
-          <h3 className="text-base font-black text-white truncate drop-shadow-sm leading-tight tracking-tight">{asset.name}</h3>
+      {/* 顶部信息栏 */}
+      <div className="relative z-10 flex justify-between items-start mb-2">
+        <div className="min-w-0 pr-2 pt-1">
+          <h3 className="text-[17px] font-black text-white truncate drop-shadow-md leading-tight tracking-tight">{asset.name}</h3>
         </div>
         <div className="flex gap-1">
-          <button onClick={(e) => { e.stopPropagation(); onShowChart(asset); }} className="p-1.5 bg-white/10 hover:bg-white/30 text-white rounded-sm opacity-60 group-hover:opacity-100 transition-all duration-200">
+          <button onClick={(e) => { e.stopPropagation(); onShowChart(asset); }} className="p-1.5 bg-white/10 hover:bg-white/25 text-white rounded opacity-70 hover:opacity-100 transition-all duration-200 border border-white/10 shadow-sm backdrop-blur-sm">
             <Icons.Chart className="w-3.5 h-3.5" />
           </button>
         </div>
       </div>
       
+      {/* 底部数据栏 */}
       <div className="relative z-10 flex justify-between items-end">
         <div className="min-w-0">
           {isEditingValue ? (
-            <input autoFocus type="number" value={tempValue} onChange={(e) => setTempValue(e.target.value)} onBlur={handleSaveValue} onKeyDown={(e) => e.key === 'Enter' && handleSaveValue()} className="text-xl font-mono font-black text-white bg-black/20 border-none outline-none rounded-sm px-1.5 w-32" onClick={(e) => e.stopPropagation()} />
+            <input autoFocus type="number" value={tempValue} onChange={(e) => setTempValue(e.target.value)} onBlur={handleSaveValue} onKeyDown={(e) => e.key === 'Enter' && handleSaveValue()} className="text-xl font-mono font-black text-white bg-black/20 border-none outline-none rounded px-1.5 w-32 shadow-inner" onClick={(e) => e.stopPropagation()} />
           ) : (
-            <div onClick={(e) => { e.stopPropagation(); setIsEditingValue(true); setTempValue(asset.value.toString()); }} className="cursor-text hover:bg-white/5 px-0.5 rounded-sm transition-colors">
-              <span className="text-2xl font-mono font-black text-white">{new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY', maximumFractionDigits: 0 }).format(asset.value)}</span>
+            <div onClick={(e) => { e.stopPropagation(); setIsEditingValue(true); setTempValue(asset.value.toString()); }} className="cursor-text group/val inline-block">
+              <span className="text-[22px] font-mono font-black text-white drop-shadow-md tracking-tight leading-none group-hover/val:underline decoration-white/30 underline-offset-4 decoration-2">
+                {new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY', maximumFractionDigits: 0 }).format(asset.value)}
+              </span>
             </div>
           )}
           {hasProgress && (
-            <p className="text-[9px] font-bold text-white/60 mt-0.5 uppercase">{progressPercent.toFixed(0)}% / {new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY', maximumFractionDigits: 0 }).format(asset.targetValue || 0)}</p>
+            <div className="flex items-center gap-1 mt-1">
+               <div className="h-1 w-1 bg-white/60 rounded-full animate-pulse"></div>
+               <p className="text-[10px] font-bold text-white/80 uppercase tracking-wide">{progressPercent.toFixed(0)}% / {new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY', maximumFractionDigits: 0 }).format(asset.targetValue || 0)}</p>
+            </div>
           )}
         </div>
-        <div className="text-right">
-          {asset.notes && <div className="text-[9px] text-white/70 font-bold mb-0.5 max-w-[120px] truncate leading-none drop-shadow-sm">{asset.notes}</div>}
-          <div className="text-[8px] text-white/40 font-mono font-black uppercase whitespace-nowrap leading-none">{asset.lastUpdated}</div>
+        <div className="text-right flex flex-col items-end gap-1">
+          <div className="flex items-center gap-1.5">
+            <span className="text-[9px] font-black text-white/80 uppercase tracking-widest bg-black/20 px-1.5 py-0.5 rounded backdrop-blur-sm shadow-sm border border-white/5">
+              {asset.category}
+            </span>
+            {asset.change24h !== undefined && !hasProgress && (
+              <span className={`text-[9px] font-bold px-1 py-0.5 rounded bg-black/10 backdrop-blur-sm ${isPositive ? 'text-emerald-200' : 'text-rose-200'}`}>
+                {isPositive ? '↑' : '↓'}{Math.abs(asset.change24h)}%
+              </span>
+            )}
+          </div>
+          {asset.notes && <div className="text-[9px] text-white/80 font-bold max-w-[120px] truncate leading-none drop-shadow-sm bg-black/10 px-1.5 py-0.5 rounded inline-block backdrop-blur-sm border border-white/5">{asset.notes}</div>}
+          <div className="text-[9px] text-white/50 font-mono font-black uppercase whitespace-nowrap leading-none tracking-wider">{asset.lastUpdated}</div>
         </div>
       </div>
     </div>
