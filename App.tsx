@@ -144,7 +144,7 @@ export const App: React.FC = () => {
   const [showGlobalChart, setShowGlobalChart] = useState(false);
   const [chartRange, setChartRange] = useState<'30d' | '1y'>('30d');
   const [showDistribution, setShowDistribution] = useState<'asset' | 'budget' | null>(null);
-  const [importText, setImportText] = useState('');
+  const [backupText, setBackupText] = useState('');
 
   const [editingBudgetIndex, setEditingBudgetIndex] = useState<number | null>(null);
   const [viewingTransactionsIndex, setViewingTransactionsIndex] = useState<number | null>(null);
@@ -592,34 +592,32 @@ export const App: React.FC = () => {
     setEditingBudgetIndex(null);
   };
 
-  const handleExportData = () => {
+  const handleCopyBackup = () => {
     const data = { assets, budgets, budgetCategoryList, assetCategoryList, themeColor, isAutoTheme, customCategoryColors };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `assets_backup_${new Date().toISOString().split('T')[0]}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    alert('导出成功！');
+    const jsonString = JSON.stringify(data, null, 2);
+    setBackupText(jsonString);
+    navigator.clipboard.writeText(jsonString)
+      .then(() => alert('备份数据已生成并复制到剪贴板！'))
+      .catch(() => alert('数据已生成，请手动复制下方文本框内容。'));
   };
 
-  const handleImportData = () => {
-    if (!importText.trim()) { alert('请粘贴备份数据！'); return; }
+  const handleRestoreBackup = () => {
+    if (!backupText.trim()) { alert('请先在文本框中粘贴备份数据！'); return; }
     try {
-      const data = JSON.parse(importText);
-      if (data.assets) setAssets(data.assets);
-      if (data.budgets) setBudgets(data.budgets);
-      if (data.budgetCategoryList) setBudgetCategoryList(data.budgetCategoryList);
-      if (data.assetCategoryList) setAssetCategoryList(data.assetCategoryList);
-      if (data.themeColor) setThemeColor(data.themeColor);
-      if (data.customCategoryColors) setCustomCategoryColors(data.customCategoryColors);
-      setImportText('');
-      alert('数据导入成功！');
+      const data = JSON.parse(backupText);
+      if (confirm('确定要从备份数据恢复吗？当前数据将被覆盖。')) {
+          if (data.assets) setAssets(data.assets);
+          if (data.budgets) setBudgets(data.budgets);
+          if (data.budgetCategoryList) setBudgetCategoryList(data.budgetCategoryList);
+          if (data.assetCategoryList) setAssetCategoryList(data.assetCategoryList);
+          if (data.themeColor) setThemeColor(data.themeColor);
+          if (data.customCategoryColors) setCustomCategoryColors(data.customCategoryColors);
+          if (data.isAutoTheme !== undefined) setIsAutoTheme(data.isAutoTheme);
+          setBackupText('');
+          alert('数据恢复成功！');
+      }
     } catch (e) {
-      alert('导入失败，请检查格式。');
+      alert('数据格式错误，无法恢复。请检查JSON格式。');
     }
   };
 
@@ -881,11 +879,23 @@ export const App: React.FC = () => {
                   </div>
                 </div>
                 <div className="pt-6 border-t border-slate-100 space-y-4">
-                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">数据管理</label>
-                  <div className="flex flex-col gap-4">
-                    <div className="flex gap-4">
-                        <button onClick={handleExportData} className="flex-1 py-3 bg-slate-50 text-slate-600 font-bold text-[10px] uppercase tracking-widest border border-slate-200 rounded hover:bg-slate-100 transition-all active:scale-[0.98]">导出备份</button>
-                        <button onClick={handleImportData} style={{ backgroundColor: themeColor }} className="flex-1 py-3 text-white font-black text-[10px] uppercase tracking-widest rounded hover:brightness-110 shadow-md transition-all active:scale-[0.98]">导入恢复</button>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">数据管理 (复制/粘贴)</label>
+                  
+                  <textarea 
+                    value={backupText}
+                    onChange={(e) => setBackupText(e.target.value)}
+                    className="w-full h-32 px-3 py-2 text-[10px] font-mono font-medium text-slate-600 border border-slate-200 rounded bg-slate-50 focus:ring-2 focus:ring-slate-900/5 outline-none resize-none placeholder:text-slate-300"
+                    placeholder="在此处粘贴备份数据用于恢复，或点击'生成备份'获取数据..."
+                  />
+                  
+                  <div className="flex flex-col gap-3">
+                    <div className="flex gap-3">
+                        <button onClick={handleCopyBackup} className="flex-1 py-3 bg-slate-50 text-slate-600 font-bold text-[10px] uppercase tracking-widest border border-slate-200 rounded hover:bg-slate-100 transition-all active:scale-[0.98]">
+                            生成并复制备份
+                        </button>
+                        <button onClick={handleRestoreBackup} style={{ backgroundColor: themeColor }} className="flex-1 py-3 text-white font-black text-[10px] uppercase tracking-widest rounded hover:brightness-110 shadow-md transition-all active:scale-[0.98]">
+                            从文本恢复数据
+                        </button>
                     </div>
                     <button onClick={handleClearData} className="w-full py-3 bg-rose-50 text-rose-600 border border-rose-200 font-black text-[10px] uppercase tracking-widest rounded hover:bg-rose-100 transition-all active:scale-[0.98]">
                         清空数据 (保留模板)
