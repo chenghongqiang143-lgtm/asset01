@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Asset, AssetCategory } from '../types';
 
@@ -11,6 +10,16 @@ interface AddAssetModalProps {
   categoryColors: Record<string, string>;
   onDelete?: () => void;
 }
+
+const isDarkColor = (color: string) => {
+  if (!color) return false;
+  const hex = color.replace('#', '');
+  const r = parseInt(hex.substr(0, 2), 16);
+  const g = parseInt(hex.substr(2, 2), 16);
+  const b = parseInt(hex.substr(4, 2), 16);
+  const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+  return brightness < 155;
+};
 
 const AddAssetModal: React.FC<AddAssetModalProps> = ({ isOpen, onClose, onAdd, initialData, assetCategoryList, categoryColors, onDelete }) => {
   const [name, setName] = useState('');
@@ -42,6 +51,7 @@ const AddAssetModal: React.FC<AddAssetModalProps> = ({ isOpen, onClose, onAdd, i
 
   // Determine the active theme color based on the selected category or initial asset color
   const activeColor = initialData?.color || categoryColors[category] || '#0f172a';
+  const isDark = isDarkColor(activeColor);
 
   const showTargetInput = category === AssetCategory.SAVING || category === AssetCategory.LIABILITY;
 
@@ -70,10 +80,12 @@ const AddAssetModal: React.FC<AddAssetModalProps> = ({ isOpen, onClose, onAdd, i
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
-      <div className="bg-white rounded w-full max-w-md p-8 shadow-2xl border border-slate-200">
-        <h2 className="text-2xl font-black mb-8 text-slate-900 uppercase tracking-tighter" style={{ color: activeColor }}>
-          {initialData ? '编辑账户' : '添加账户'}
-        </h2>
+      <div className="bg-white rounded w-full max-w-md p-8 shadow-2xl border border-slate-200 overflow-hidden">
+        <div className="-mx-8 -mt-8 px-8 py-6 mb-8" style={{ background: `linear-gradient(135deg, ${activeColor}, ${activeColor}22)` }}>
+          <h2 className={`text-2xl font-black uppercase tracking-tighter ${isDark ? 'text-white' : 'text-slate-900'}`}>
+            {initialData ? '编辑账户' : '添加账户'}
+          </h2>
+        </div>
         <form onSubmit={handleSubmit} className="space-y-5">
           <div>
             <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">账户名称</label>

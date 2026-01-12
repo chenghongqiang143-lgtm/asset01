@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, useCallback, useRef, memo } from 'react';
 import { Asset, AssetCategory, CategoryColors, HistoryPoint, Budget } from './types';
 import { Icons } from './constants';
@@ -108,7 +107,7 @@ const FilterBar = memo(({ selected, onSelect, categories, onAdd, type, themeColo
   );
 });
 
-const App: React.FC = () => {
+export const App: React.FC = () => {
   const [isAppReady, setIsAppReady] = useState(false);
   const [activeTab, setActiveTab] = useState<'home' | 'budget' | 'settings'>('home');
   const [assets, setAssets] = useState<Asset[]>(() => {
@@ -620,7 +619,7 @@ const App: React.FC = () => {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
               <div className="lg:col-span-1 space-y-6">
                 <section 
-                  className={`text-white rounded shadow-2xl relative overflow-hidden transition-all duration-500 flex flex-col justify-between sticky top-4 z-20 ${isScrolled ? 'h-[110px] py-5 px-6 shadow-xl' : 'h-[180px] p-6 shadow-[0_20px_50px_-12px_rgba(0,0,0,0.35)]'}`}
+                  className={`text-white rounded shadow-2xl relative overflow-hidden transition-all duration-500 flex flex-col justify-between sticky top-4 z-20 h-[180px] p-6 shadow-[0_20px_50px_-12px_rgba(0,0,0,0.35)]`}
                   style={{ backgroundColor: themeColor, background: `linear-gradient(135deg, ${themeColor} 0%, ${themeColor}CC 100%)` }}
                 >
                   <div className="flex justify-between items-start relative z-10">
@@ -634,10 +633,10 @@ const App: React.FC = () => {
                       </button>
                     </div>
                   </div>
-                  <div className={`font-mono font-black relative z-10 tracking-tighter text-white transition-all duration-500 ${isScrolled ? 'text-3xl translate-y-[-4px]' : 'text-3xl'}`}>
+                  <div className={`font-mono font-black relative z-10 tracking-tighter text-white transition-all duration-500 text-3xl`}>
                     {new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY', maximumFractionDigits: 0 }).format(stats.netWorth)}
                   </div>
-                  <div className={`grid grid-cols-2 gap-3 relative z-10 border-t border-white/10 pt-3 transition-all duration-500 origin-bottom ${isScrolled ? 'opacity-0 h-0 scale-y-0 overflow-hidden mt-0' : 'opacity-100 h-auto scale-y-100'}`}>
+                  <div className={`grid grid-cols-2 gap-3 relative z-10 border-t border-white/10 pt-3 transition-all duration-500 origin-bottom opacity-100 h-auto scale-y-100`}>
                     <div className="bg-white/10 p-2 rounded border border-white/5">
                       <span className="text-[8px] font-black text-white/50 uppercase block">总资产</span>
                       <span className="text-sm font-bold text-white">¥{stats.totalAssets.toLocaleString()}</span>
@@ -683,7 +682,7 @@ const App: React.FC = () => {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
               <div className="lg:col-span-1 space-y-6">
                 <section 
-                  className={`text-white rounded shadow-2xl relative overflow-hidden transition-all duration-500 flex flex-col justify-between sticky top-4 z-20 ${isScrolled ? 'h-[110px] py-5 px-6 shadow-xl' : 'h-[180px] p-6 shadow-[0_20px_50px_-12px_rgba(0,0,0,0.35)]'}`}
+                  className={`text-white rounded shadow-2xl relative overflow-hidden transition-all duration-500 flex flex-col justify-between sticky top-4 z-20 h-[180px] p-6 shadow-[0_20px_50px_-12px_rgba(0,0,0,0.35)]`}
                   style={{ backgroundColor: themeColor, background: `linear-gradient(135deg, ${themeColor} 0%, ${themeColor}CC 100%)` }}
                 >
                   <div className="flex justify-between items-start relative z-10">
@@ -697,10 +696,10 @@ const App: React.FC = () => {
                       </div>
                     </div>
                   </div>
-                  <div className={`font-mono font-black relative z-10 tracking-tighter text-white transition-all duration-500 ${isScrolled ? 'text-3xl translate-y-[-4px]' : 'text-3xl'}`}>
+                  <div className={`font-mono font-black relative z-10 tracking-tighter text-white transition-all duration-500 text-3xl`}>
                     {new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY', maximumFractionDigits: 0 }).format(budgetStats.remaining)}
                   </div>
-                  <div className={`grid grid-cols-2 gap-3 relative z-10 border-t border-white/10 pt-3 transition-all duration-500 origin-bottom ${isScrolled ? 'opacity-0 h-0 scale-y-0 overflow-hidden mt-0' : 'opacity-100 h-auto scale-y-100'}`}>
+                  <div className={`grid grid-cols-2 gap-3 relative z-10 border-t border-white/10 pt-3 transition-all duration-500 origin-bottom opacity-100 h-auto scale-y-100`}>
                     <div className="bg-white/10 p-2 rounded border border-white/5 overflow-hidden">
                       <span className="text-[8px] font-black text-white/50 uppercase block">总预算</span>
                       {isEditingTotalLimit ? (
@@ -877,19 +876,24 @@ const App: React.FC = () => {
       {(viewingAssetChart || showGlobalChart) && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in zoom-in-95 duration-300">
           <div className="bg-white rounded w-full max-w-2xl p-6 shadow-2xl border border-white/20">
-            <div className="flex justify-between items-center mb-6">
-              <div className="flex items-center gap-4">
-                  <h2 className="text-xl font-black text-slate-900 uppercase tracking-tighter">{showGlobalChart ? '资产趋势分析' : `${viewingAssetChart?.name} 历史波动`}</h2>
-                  <div className="flex bg-slate-100 p-1 rounded">
-                    <button onClick={() => setChartRange('30d')} className={`px-3 py-1 text-[10px] font-black rounded transition-all ${chartRange === '30d' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-400'}`}>30天</button>
-                    <button onClick={() => setChartRange('1y')} className={`px-3 py-1 text-[10px] font-black rounded transition-all ${chartRange === '1y' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-400'}`}>本年</button>
-                  </div>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4">
+              <div>
+                  <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">{showGlobalChart ? '资产趋势分析' : viewingAssetChart?.name}</h2>
+                  <p className="text-xs font-bold text-slate-400 mt-1">{showGlobalChart ? '全账户资产净值历史波动' : '该账户的历史资产价值记录'}</p>
               </div>
-              <button onClick={(e) => { e.stopPropagation(); setViewingAssetChart(null); setShowGlobalChart(false); }} className="p-2 text-slate-400 hover:text-slate-900 font-black text-[10px] uppercase">关闭</button>
+              <div className="flex items-center gap-4">
+                  <div className="flex bg-slate-100 p-1 rounded-lg">
+                    <button onClick={() => setChartRange('30d')} className={`px-4 py-1.5 text-[10px] font-black rounded-md transition-all ${chartRange === '30d' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-400 hover:text-slate-600'}`}>30天</button>
+                    <button onClick={() => setChartRange('1y')} className={`px-4 py-1.5 text-[10px] font-black rounded-md transition-all ${chartRange === '1y' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-400 hover:text-slate-600'}`}>本年</button>
+                  </div>
+                  <button onClick={(e) => { e.stopPropagation(); setViewingAssetChart(null); setShowGlobalChart(false); }} className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-400 hover:bg-slate-200 hover:text-slate-900 transition-colors">
+                    <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                  </button>
+              </div>
             </div>
             <div className="h-72 w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={getChartData(showGlobalChart ? globalHistory : (viewingAssetChart?.history || []))}>
+                <AreaChart data={getChartData(showGlobalChart ? globalHistory : (viewingAssetChart?.history || []))} margin={{ top: 10, right: 0, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                   <XAxis 
                     dataKey="date" 
@@ -903,9 +907,17 @@ const App: React.FC = () => {
                            return `${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getDate().toString().padStart(2, '0')}`;
                        } catch(e) { return val; }
                     }}
-                    tick={{ fontSize: 8, fill: '#94a3b8', fontWeight: 900 }} 
+                    tick={{ fontSize: 9, fill: '#cbd5e1', fontWeight: 800, dy: 10 }}
+                    padding={{ left: 10, right: 10 }}
                   />
-                  <YAxis axisLine={false} tickLine={false} tickFormatter={(val) => `¥${(val/10000).toFixed(1)}w`} tick={{ fontSize: 8, fill: '#94a3b8', fontWeight: 900 }} width={50} />
+                  <YAxis 
+                    axisLine={false} 
+                    tickLine={false} 
+                    tickFormatter={(val) => `¥${(val/10000).toFixed(1)}w`} 
+                    tick={{ fontSize: 9, fill: '#cbd5e1', fontWeight: 800, dx: 5, dy: -10 }} 
+                    mirror={true}
+                    width={40}
+                  />
                   <Tooltip formatter={(val: number) => [`¥${val.toLocaleString()}`, '金额']} contentStyle={{ borderRadius: '2px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', fontSize: '10px', fontWeight: 900 }} />
                   <Area type="monotone" dataKey="value" stroke={viewingAssetChart ? (viewingAssetChart.color || customCategoryColors[viewingAssetChart.category] || CategoryColors[viewingAssetChart.category as AssetCategory]) : themeColor} strokeWidth={3} fillOpacity={0.05} fill={viewingAssetChart ? (viewingAssetChart.color || customCategoryColors[viewingAssetChart.category] || CategoryColors[viewingAssetChart.category as AssetCategory]) : themeColor} dot={{ r: 3, strokeWidth: 2, fill: '#fff' }} activeDot={{ r: 5, strokeWidth: 0 }} />
                 </AreaChart>
@@ -955,8 +967,10 @@ const App: React.FC = () => {
       />}
       {editingBudgetIndex !== null && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-xl animate-in zoom-in-95 duration-300">
-          <div className="bg-white rounded w-full max-sm:max-w-xs max-w-sm p-8 shadow-2xl overflow-y-auto max-h-[90vh]">
-            <h2 className="text-xl font-black mb-8 text-slate-900 uppercase">编辑预算项目</h2>
+          <div className="bg-white rounded w-full max-sm:max-w-xs max-w-sm p-8 shadow-2xl overflow-y-auto max-h-[90vh] overflow-hidden">
+            <div className="-mx-8 -mt-8 px-8 py-6 mb-8" style={{ background: `linear-gradient(135deg, ${budgets[editingBudgetIndex].color || themeColor}, ${(budgets[editingBudgetIndex].color || themeColor)}22)` }}>
+                <h2 className={`text-xl font-black uppercase ${isDarkColor(budgets[editingBudgetIndex].color || themeColor) ? 'text-white' : 'text-slate-900'}`}>编辑预算项目</h2>
+            </div>
             <div className="space-y-6">
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -986,7 +1000,7 @@ const App: React.FC = () => {
                        key={color} 
                        onClick={() => handleUpdateBudget(editingBudgetIndex, { color })} 
                        style={{ backgroundColor: color }} 
-                       className={`w-full aspect-square rounded border ${budgets[editingBudgetIndex].color === color ? 'border-slate-900 ring-2 ring-slate-900/10' : 'border-slate-100'}`}
+                       className={`w-full aspect-square rounded border ${budgets[editingBudgetIndex].color === color ? 'border-slate-900 ring-2 ring-slate-900/10' : 'border-slate-100'} transition-all hover:scale-105 active:scale-95`}
                      />
                    ))}
                 </div>
@@ -1013,5 +1027,3 @@ const App: React.FC = () => {
     </div>
   );
 };
-
-export default App;
