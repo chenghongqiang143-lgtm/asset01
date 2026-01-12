@@ -5,6 +5,7 @@ import { Icons } from '../constants';
 
 interface AssetCardProps {
   asset: Asset;
+  categoryColor?: string;
   onDelete: (id: string) => void;
   onUpdate: (id: string, updates: Partial<Asset>) => void;
   onShowChart: (asset: Asset) => void;
@@ -12,14 +13,15 @@ interface AssetCardProps {
   onVisible?: (id: string, color: string) => void;
 }
 
-const AssetCard: React.FC<AssetCardProps> = memo(({ asset, onDelete, onUpdate, onShowChart, onEditFull, onVisible }) => {
+const AssetCard: React.FC<AssetCardProps> = memo(({ asset, categoryColor, onDelete, onUpdate, onShowChart, onEditFull, onVisible }) => {
   const [isEditingValue, setIsEditingValue] = useState(false);
   const [tempValue, setTempValue] = useState(asset.value.toString());
   const cardRef = useRef<HTMLDivElement>(null);
   const pressTimer = useRef<number | null>(null);
 
   const isPositive = (asset.change24h || 0) >= 0;
-  const baseColor = asset.color || CategoryColors[asset.category];
+  // Priority: Asset individual color > Category state color > Default CategoryColors mapping
+  const baseColor = asset.color || categoryColor || CategoryColors[asset.category as AssetCategory] || '#64748b';
 
   const hasProgress = (asset.category === AssetCategory.SAVING || asset.category === AssetCategory.LIABILITY) && asset.targetValue;
   const progressPercent = hasProgress ? Math.min(100, (asset.value / (asset.targetValue || 1)) * 100) : 0;
@@ -73,9 +75,8 @@ const AssetCard: React.FC<AssetCardProps> = memo(({ asset, onDelete, onUpdate, o
     >
       <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle, #fff 1px, transparent 1px)', backgroundSize: '10px 10px' }} />
       
-      {/* 资产账户背景大图标 */}
       <div className="absolute right-[-10%] bottom-[-15%] opacity-[0.08] pointer-events-none z-0 transform rotate-[15deg] text-white">
-        <Icons.CategoryIcon category={asset.category} className="w-24 h-24" />
+        <Icons.CategoryIcon category={asset.category as AssetCategory} className="w-24 h-24" />
       </div>
 
       {hasProgress && (

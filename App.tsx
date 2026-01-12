@@ -62,7 +62,7 @@ const FilterBar = memo(({ selected, onSelect, categories, onAdd, type, themeColo
         {['全部', ...uniqueCategories].map(cat => (
           <button
             key={cat}
-            onClick={() => onSelect(cat)}
+            onClick={() => onSelect(cat as string)}
             onMouseDown={() => startLongPress(cat, type)}
             onMouseUp={clearLongPress}
             onMouseLeave={clearLongPress}
@@ -75,7 +75,7 @@ const FilterBar = memo(({ selected, onSelect, categories, onAdd, type, themeColo
             }}
             className={`px-4 h-9 rounded-sm text-[10px] font-black uppercase tracking-widest whitespace-nowrap transition-all border shadow-sm flex items-center justify-center flex-shrink-0 active:scale-95`}
           >
-            {cat}
+            {cat as string}
           </button>
         ))}
         {onAdd && (
@@ -111,6 +111,11 @@ const App: React.FC = () => {
     return saved ? JSON.parse(saved) : DEFAULT_ASSET_CATEGORIES;
   });
   
+  const [customCategoryColors, setCustomCategoryColors] = useState<Record<string, string>>(() => {
+    const saved = localStorage.getItem('category_colors_map');
+    return saved ? JSON.parse(saved) : CategoryColors;
+  });
+
   const [selectedAssetCategory, setSelectedAssetCategory] = useState<string>('全部');
   const [selectedBudgetCategory, setSelectedBudgetCategory] = useState<string>('全部');
 
@@ -164,14 +169,6 @@ const App: React.FC = () => {
       }
     };
     loadData();
-    const timeout = setTimeout(() => {
-      if (!isAppReady) {
-        setIsAppReady(true);
-        const loader = document.getElementById('initial-loader');
-        if (loader) loader.remove();
-      }
-    }, 3000);
-    return () => clearTimeout(timeout);
   }, []);
 
   useEffect(() => {
@@ -185,6 +182,7 @@ const App: React.FC = () => {
   useEffect(() => localStorage.setItem('budget_data', JSON.stringify(budgets)), [budgets]);
   useEffect(() => localStorage.setItem('budget_category_list', JSON.stringify(budgetCategoryList)), [budgetCategoryList]);
   useEffect(() => localStorage.setItem('asset_category_list', JSON.stringify(assetCategoryList)), [assetCategoryList]);
+  useEffect(() => localStorage.setItem('category_colors_map', JSON.stringify(customCategoryColors)), [customCategoryColors]);
   useEffect(() => {
     localStorage.setItem('app_theme', themeColor);
     localStorage.setItem('auto_theme', isAutoTheme.toString());
@@ -332,6 +330,7 @@ const App: React.FC = () => {
     const newCat = prompt('请输入新预算分类名称：');
     if (newCat && !budgetCategoryList.includes(newCat)) {
       setBudgetCategoryList([...budgetCategoryList, newCat]);
+      setCustomCategoryColors(prev => ({ ...prev, [newCat]: THEME_COLORS[Math.floor(Math.random() * THEME_COLORS.length)] }));
     }
   };
 
@@ -339,6 +338,7 @@ const App: React.FC = () => {
     const newCat = prompt('请输入新资产分类名称：');
     if (newCat && !assetCategoryList.includes(newCat)) {
       setAssetCategoryList([...assetCategoryList, newCat]);
+      setCustomCategoryColors(prev => ({ ...prev, [newCat]: THEME_COLORS[Math.floor(Math.random() * THEME_COLORS.length)] }));
     }
   };
 
@@ -354,7 +354,24 @@ const App: React.FC = () => {
         setAssets(assets.map(a => a.category === (oldName as AssetCategory) ? { ...a, category: newName as AssetCategory } : a));
         if (selectedAssetCategory === oldName) setSelectedAssetCategory(newName);
       }
+      setCustomCategoryColors(prev => {
+        const next = { ...prev };
+        next[newName] = next[oldName] || themeColor;
+        delete next[oldName];
+        return next;
+      });
     }
+  };
+
+  const handleMoveCategoryAction = (index: number, direction: 'up' | 'down', type: 'asset' | 'budget') => {
+    const list = type === 'asset' ? [...assetCategoryList] : [...budgetCategoryList];
+    if (direction === 'up' && index > 0) {
+      [list[index], list[index - 1]] = [list[index - 1], list[index]];
+    } else if (direction === 'down' && index < list.length - 1) {
+      [list[index], list[index + 1]] = [list[index + 1], list[index]];
+    }
+    if (type === 'asset') setAssetCategoryList(list);
+    else setBudgetCategoryList(list);
   };
 
   const handleDeleteCategoryAction = (name: string, type: 'asset' | 'budget') => {
@@ -370,6 +387,10 @@ const App: React.FC = () => {
     }
   };
 
+  const handleUpdateCategoryColor = (name: string, color: string) => {
+    setCustomCategoryColors(prev => ({ ...prev, [name]: color }));
+  };
+
   const handleRenameCategory = () => {
     if (!editingCategory) return;
     handleRenameCategoryAction(editingCategory.name, editingCategory.type);
@@ -377,7 +398,7 @@ const App: React.FC = () => {
   };
 
   const handleExportData = () => {
-    const data = { assets, budgets, budgetCategoryList, assetCategoryList, themeColor, isAutoTheme };
+    const data = { assets, budgets, budgetCategoryList, assetCategoryList, themeColor, isAutoTheme, customCategoryColors };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -399,6 +420,7 @@ const App: React.FC = () => {
       if (data.budgetCategoryList) setBudgetCategoryList(data.budgetCategoryList);
       if (data.assetCategoryList) setAssetCategoryList(data.assetCategoryList);
       if (data.themeColor) setThemeColor(data.themeColor);
+      if (data.customCategoryColors) setCustomCategoryColors(data.customCategoryColors);
       setImportText('');
       alert('数据导入成功！');
     } catch (e) {
@@ -420,12 +442,36 @@ const App: React.FC = () => {
 
   const isThemeDark = isDarkColor(themeColor);
 
-  const CategoryManager = ({ list, onAdd, onRename, onDelete, type }: { list: string[], onAdd: () => void, onRename: (n: string, t: any) => void, onDelete: (n: string, t: any) => void, type: 'asset' | 'budget' }) => (
+  const CategoryManager = ({ list, colorsMap, onAdd, onRename, onDelete, onMove, onColorChange, type }: { list: string[], colorsMap: Record<string, string>, onAdd: () => void, onRename: (n: string, t: any) => void, onDelete: (n: string, t: any) => void, onMove: (idx: number, dir: 'up' | 'down', t: any) => void, onColorChange: (n: string, c: string) => void, type: 'asset' | 'budget' }) => (
     <div className="space-y-2 mt-4 animate-in slide-in-from-top-2 duration-300">
-      {list.map(cat => (
-        <div key={cat} className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-sm group transition-all hover:border-slate-300">
-          <span className="text-xs font-bold text-slate-700">{cat}</span>
-          <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+      {list.map((cat, idx) => (
+        <div key={cat} className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-sm group transition-all hover:border-slate-300 relative">
+          <div className="flex items-center gap-3">
+             <div className="relative group/color">
+                <button 
+                   className="w-4 h-4 rounded-full border border-white shadow-sm transition-transform active:scale-90"
+                   style={{ backgroundColor: colorsMap[cat] || '#64748b' }}
+                />
+                <div className="absolute left-0 top-6 hidden group-hover/color:grid grid-cols-6 gap-2 p-3 bg-white shadow-2xl border border-slate-200 rounded-sm z-[100] w-max min-w-[150px]">
+                   {THEME_COLORS.map(c => (
+                     <button 
+                        key={c} 
+                        onClick={() => onColorChange(cat, c)} 
+                        style={{ backgroundColor: c }} 
+                        className="w-4 h-4 rounded-sm hover:scale-110 active:scale-90 transition-transform shadow-sm border border-black/5" 
+                     />
+                   ))}
+                </div>
+             </div>
+             <span className="text-xs font-bold text-slate-700">{cat}</span>
+          </div>
+          <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button onClick={() => onMove(idx, 'up', type)} disabled={idx === 0} className="p-1 text-slate-400 hover:text-slate-900 transition-colors disabled:opacity-20">
+              <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="3"><path d="m18 15-6-6-6 6"/></svg>
+            </button>
+            <button onClick={() => onMove(idx, 'down', type)} disabled={idx === list.length - 1} className="p-1 text-slate-400 hover:text-slate-900 transition-colors disabled:opacity-20">
+              <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="3"><path d="m6 9 6 6 6-6"/></svg>
+            </button>
             <button onClick={() => onRename(cat, type)} className="p-1 text-slate-400 hover:text-blue-500 transition-colors">
               <Icons.Cog className="w-3.5 h-3.5" />
             </button>
@@ -445,13 +491,11 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen pb-40 transition-all duration-700 overflow-x-hidden" style={{ backgroundColor: activeHeaderColor === '#ffffff' ? '#f8fafc' : `${activeHeaderColor}08` }}>
-      
       <main className="max-w-6xl mx-auto pt-10 pb-10">
         <div 
           className="flex transition-transform duration-500 ease-[cubic-bezier(0.4,0,0.2,1)] will-change-transform" 
           style={{ transform: `translateX(-${tabIndex * 100}%)`, width: '100%' }}
         >
-          {/* Home Tab Content */}
           <div className="w-full flex-shrink-0 px-4">
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
               <div className="lg:col-span-1 space-y-6">
@@ -509,14 +553,12 @@ const App: React.FC = () => {
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {filteredAssets.map(asset => (
-                    <AssetCard key={asset.id} asset={asset} onDelete={(id) => setAssets(prev => prev.filter(a => a.id !== id))} onUpdate={handleUpdateAsset} onShowChart={setViewingAssetChart} onEditFull={setEditingAsset} onVisible={onAssetVisible} />
+                    <AssetCard key={asset.id} asset={asset} categoryColor={customCategoryColors[asset.category]} onDelete={(id) => setAssets(prev => prev.filter(a => a.id !== id))} onUpdate={handleUpdateAsset} onShowChart={setViewingAssetChart} onEditFull={setEditingAsset} onVisible={onAssetVisible} />
                   ))}
                 </div>
               </div>
             </div>
           </div>
-
-          {/* Budget Tab Content */}
           <div className="w-full flex-shrink-0 px-4">
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
               <div className="lg:col-span-1 space-y-6">
@@ -592,7 +634,7 @@ const App: React.FC = () => {
                         key={realIndex} 
                         budget={b} 
                         index={realIndex} 
-                        themeColor={themeColor} 
+                        themeColor={customCategoryColors[b.category] || themeColor} 
                         onUpdate={handleUpdateBudget} 
                         onEditFull={setEditingBudgetIndex} 
                         onQuickAdd={setQuickAddIndex} 
@@ -603,8 +645,6 @@ const App: React.FC = () => {
               </div>
             </div>
           </div>
-
-          {/* Settings Tab Content */}
           <div className="w-full flex-shrink-0 px-4">
             <div className="max-w-2xl mx-auto space-y-8">
               <div className="bg-white border border-slate-200 rounded-sm shadow-sm overflow-hidden p-8 space-y-8">
@@ -624,22 +664,21 @@ const App: React.FC = () => {
                     <button onClick={() => setIsAssetCatExpanded(!isAssetCatExpanded)} className="w-full flex items-center justify-between p-4 bg-slate-50 hover:bg-slate-100 transition-colors">
                       <label className="block text-[10px] font-black text-slate-600 uppercase tracking-widest cursor-pointer">资产分类管理</label>
                       <div className={`transition-transform duration-300 ${isAssetCatExpanded ? 'rotate-180' : ''}`}>
-                        <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 9l-7 7-7-7" /></svg>
+                        <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="m18 15-6-6-6 6" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round"/></svg>
                       </div>
                     </button>
-                    {isAssetCatExpanded && <div className="p-4 border-t border-slate-100"><CategoryManager list={assetCategoryList} onAdd={handleAddAssetCategory} onRename={handleRenameCategoryAction} onDelete={handleDeleteCategoryAction} type="asset" /></div>}
+                    {isAssetCatExpanded && <div className="p-4 border-t border-slate-100"><CategoryManager list={assetCategoryList} colorsMap={customCategoryColors} onAdd={handleAddAssetCategory} onRename={handleRenameCategoryAction} onDelete={handleDeleteCategoryAction} onMove={handleMoveCategoryAction} onColorChange={handleUpdateCategoryColor} type="asset" /></div>}
                   </div>
                   <div className="border border-slate-100 rounded-sm overflow-hidden">
                     <button onClick={() => setIsBudgetCatExpanded(!isBudgetCatExpanded)} className="w-full flex items-center justify-between p-4 bg-slate-50 hover:bg-slate-100 transition-colors">
                       <label className="block text-[10px] font-black text-slate-600 uppercase tracking-widest cursor-pointer">预算大类管理</label>
                       <div className={`transition-transform duration-300 ${isBudgetCatExpanded ? 'rotate-180' : ''}`}>
-                        <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 9l-7 7-7-7" /></svg>
+                         <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="m18 15-6-6-6 6" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round"/></svg>
                       </div>
                     </button>
-                    {isBudgetCatExpanded && <div className="p-4 border-t border-slate-100"><CategoryManager list={budgetCategoryList} onAdd={handleAddBudgetCategory} onRename={handleRenameCategoryAction} onDelete={handleDeleteCategoryAction} type="budget" /></div>}
+                    {isBudgetCatExpanded && <div className="p-4 border-t border-slate-100"><CategoryManager list={budgetCategoryList} colorsMap={customCategoryColors} onAdd={handleAddBudgetCategory} onRename={handleRenameCategoryAction} onDelete={handleDeleteCategoryAction} onMove={handleMoveCategoryAction} onColorChange={handleUpdateCategoryColor} type="budget" /></div>}
                   </div>
                 </div>
-                
                 <div className="pt-6 border-t border-slate-100 space-y-4">
                   <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">数据管理</label>
                   <div className="flex flex-col gap-4">
@@ -657,7 +696,6 @@ const App: React.FC = () => {
           </div>
         </div>
       </main>
-
       <div className="fixed bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-slate-50 via-slate-50/80 to-transparent pointer-events-none z-30" />
       <nav className="fixed bottom-8 left-1/2 -translate-x-1/2 w-auto min-w-[320px] max-w-lg z-40 h-16 flex items-center justify-center gap-3 px-3 rounded-xl shadow-[0_12px_40px_-10px_rgba(0,0,0,0.15)] transition-all duration-700 border border-slate-200 bg-white backdrop-blur-md">
         {[
@@ -671,8 +709,6 @@ const App: React.FC = () => {
           </button>
         ))}
       </nav>
-
-      {/* Modals and Overlays */}
       {showDistribution && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in zoom-in-95 duration-300" onClick={() => setShowDistribution(null)}>
           <div className="bg-white rounded-sm w-full max-w-lg p-8 shadow-2xl border border-white/20 overflow-y-auto max-h-[90vh]" onClick={e => e.stopPropagation()}>
@@ -680,25 +716,23 @@ const App: React.FC = () => {
               <h2 className="text-xl font-black text-slate-900 uppercase tracking-tighter">{showDistribution === 'asset' ? '资产构成分析' : '预算额度分布'}</h2>
               <button onClick={() => setShowDistribution(null)} className="text-slate-400 hover:text-slate-900 font-black text-[10px] uppercase tracking-widest">关闭</button>
             </div>
-            
             <div className="h-[250px] w-full mb-6">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie data={showDistribution === 'asset' ? assetDistributionData : budgetDistributionData} cx="50%" cy="50%" innerRadius={60} outerRadius={90} paddingAngle={5} dataKey="value" stroke="none">
                     {(showDistribution === 'asset' ? assetDistributionData : budgetDistributionData).map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={showDistribution === 'asset' ? (CategoryColors[entry.name as keyof typeof CategoryColors] || themeColor) : THEME_COLORS[index % THEME_COLORS.length]} />
+                      <Cell key={`cell-${index}`} fill={customCategoryColors[entry.name] || THEME_COLORS[index % THEME_COLORS.length]} />
                     ))}
                   </Pie>
                   <Tooltip formatter={(value: number) => [`¥${value.toLocaleString()}`, '金额']} contentStyle={{ borderRadius: '2px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', fontSize: '10px', fontWeight: 900 }} />
                 </PieChart>
               </ResponsiveContainer>
             </div>
-
             <div className="space-y-2 pt-4 border-t border-slate-100">
                {[...(showDistribution === 'asset' ? assetDistributionData : budgetDistributionData)].sort((a,b) => b.value - a.value).map((item, index) => {
                  const total = (showDistribution === 'asset' ? assetDistributionData : budgetDistributionData).reduce((sum, i) => sum + i.value, 0);
                  const percent = total > 0 ? (item.value / total * 100).toFixed(1) : '0.0';
-                 const color = showDistribution === 'asset' ? (CategoryColors[item.name as keyof typeof CategoryColors] || themeColor) : THEME_COLORS[index % THEME_COLORS.length];
+                 const color = customCategoryColors[item.name] || THEME_COLORS[index % THEME_COLORS.length];
                  return (
                    <div key={item.name} className="flex justify-between items-center p-3 bg-slate-50 rounded-sm border border-slate-100 hover:border-slate-200 transition-colors">
                      <div className="flex items-center gap-2">
@@ -720,7 +754,6 @@ const App: React.FC = () => {
           </div>
         </div>
       )}
-
       {(viewingAssetChart || showGlobalChart) && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in zoom-in-95 duration-300">
           <div className="bg-white rounded-sm w-full max-w-2xl p-6 shadow-2xl border border-white/20">
@@ -735,17 +768,15 @@ const App: React.FC = () => {
                   <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 8, fill: '#94a3b8', fontWeight: 900 }} />
                   <YAxis axisLine={false} tickLine={false} tickFormatter={(val) => `¥${(val/10000).toFixed(1)}w`} tick={{ fontSize: 8, fill: '#94a3b8', fontWeight: 900 }} width={50} />
                   <Tooltip formatter={(val: number) => [`¥${val.toLocaleString()}`, '金额']} contentStyle={{ borderRadius: '2px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', fontSize: '10px', fontWeight: 900 }} />
-                  <Area type="monotone" dataKey="value" stroke={viewingAssetChart ? (viewingAssetChart.color || CategoryColors[viewingAssetChart.category]) : themeColor} strokeWidth={3} fillOpacity={0.05} fill={viewingAssetChart ? (viewingAssetChart.color || CategoryColors[viewingAssetChart.category]) : themeColor} dot={{ r: 3, strokeWidth: 2, fill: '#fff' }} activeDot={{ r: 5, strokeWidth: 0 }} />
+                  <Area type="monotone" dataKey="value" stroke={viewingAssetChart ? (viewingAssetChart.color || customCategoryColors[viewingAssetChart.category] || CategoryColors[viewingAssetChart.category as AssetCategory]) : themeColor} strokeWidth={3} fillOpacity={0.05} fill={viewingAssetChart ? (viewingAssetChart.color || customCategoryColors[viewingAssetChart.category] || CategoryColors[viewingAssetChart.category as AssetCategory]) : themeColor} dot={{ r: 3, strokeWidth: 2, fill: '#fff' }} activeDot={{ r: 5, strokeWidth: 0 }} />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
           </div>
         </div>
       )}
-
       <AddAssetModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onAdd={(newAsset) => setAssets([...assets, { ...newAsset, id: Math.random().toString(36).substr(2, 9), currency: 'CNY', lastUpdated: new Date().toLocaleDateString('zh-CN'), history: [{ date: new Date().toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' }), value: newAsset.value }] }])} assetCategoryList={assetCategoryList} />
       {editingAsset && <AddAssetModal isOpen={!!editingAsset} onClose={() => setEditingAsset(null)} onAdd={(data) => { handleUpdateAsset(editingAsset.id, data); setEditingAsset(null); }} initialData={editingAsset} assetCategoryList={assetCategoryList} />}
-      
       {quickAddIndex !== null && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-xl animate-in fade-in duration-300">
           <div className="bg-white rounded-sm w-full max-sm:w-full max-w-sm p-8 shadow-2xl border border-white/20">
@@ -758,7 +789,6 @@ const App: React.FC = () => {
           </div>
         </div>
       )}
-
       {editingBudgetIndex !== null && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-xl animate-in zoom-in-95 duration-300">
           <div className="bg-white rounded-sm w-full max-sm:max-w-xs max-w-sm p-8 shadow-2xl overflow-y-auto max-h-[90vh]">
@@ -802,7 +832,6 @@ const App: React.FC = () => {
           </div>
         </div>
       )}
-
       {editingCategory && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm" onClick={() => setEditingCategory(null)}>
           <div className="bg-white p-6 rounded shadow-2xl font-bold text-slate-900 text-sm max-w-xs text-center animate-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
