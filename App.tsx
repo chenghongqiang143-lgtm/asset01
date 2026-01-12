@@ -137,6 +137,15 @@ const App: React.FC = () => {
 
   const longPressTimer = useRef<number | null>(null);
 
+  const tabIndex = useMemo(() => {
+    switch (activeTab) {
+      case 'home': return 0;
+      case 'budget': return 1;
+      case 'settings': return 2;
+      default: return 0;
+    }
+  }, [activeTab]);
+
   useEffect(() => {
     const loadData = async () => {
       try {
@@ -262,7 +271,6 @@ const App: React.FC = () => {
       const newBudgets = [...prev];
       newBudgets[index] = { ...newBudgets[index], ...updates };
       
-      // 如果不是更新总计本身，我们需要重新计算总计
       if (newBudgets[index].category !== '总计') {
         const categoriesOnly = newBudgets.filter(b => b.category !== '总计');
         const totalIdx = newBudgets.findIndex(b => b.category === '总计');
@@ -436,52 +444,139 @@ const App: React.FC = () => {
   if (!isAppReady) return null;
 
   return (
-    <div className="min-h-screen pb-40 transition-all duration-700" style={{ backgroundColor: activeHeaderColor === '#ffffff' ? '#f8fafc' : `${activeHeaderColor}08` }}>
-      <main className="max-w-6xl mx-auto px-4 pt-10 pb-10">
-        {activeTab === 'home' && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start animate-in fade-in duration-500">
-            <div className="lg:col-span-1 space-y-6">
-              <section 
-                className="text-white p-6 rounded-sm shadow-xl relative overflow-hidden transition-all duration-1000 h-[180px] flex flex-col justify-between"
-                style={{ backgroundColor: themeColor, background: `linear-gradient(135deg, ${themeColor} 0%, ${themeColor}CC 100%)` }}
-              >
-                <div className="flex justify-between items-start relative z-10">
-                  <h2 className="text-white/60 text-[10px] font-black uppercase tracking-[0.2em]">净资产规模</h2>
-                  <div className="flex gap-2">
-                    <button onClick={() => setShowDistribution('asset')} className="h-8 w-8 flex items-center justify-center bg-white/10 hover:bg-white/20 rounded-sm text-white border border-white/10 transition-colors">
-                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 2v10l8.5 5"/></svg>
-                    </button>
-                    <button onClick={() => setShowGlobalChart(true)} className="h-8 w-8 flex items-center justify-center bg-white/10 hover:bg-white/20 rounded-sm text-white border border-white/10 transition-colors">
-                      <Icons.Chart className="w-4 h-4" />
-                    </button>
+    <div className="min-h-screen pb-40 transition-all duration-700 overflow-x-hidden" style={{ backgroundColor: activeHeaderColor === '#ffffff' ? '#f8fafc' : `${activeHeaderColor}08` }}>
+      
+      <main className="max-w-6xl mx-auto pt-10 pb-10">
+        <div 
+          className="flex transition-transform duration-500 ease-[cubic-bezier(0.4,0,0.2,1)] will-change-transform" 
+          style={{ transform: `translateX(-${tabIndex * 100}%)`, width: '100%' }}
+        >
+          {/* Home Tab Content */}
+          <div className="w-full flex-shrink-0 px-4">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
+              <div className="lg:col-span-1 space-y-6">
+                <section 
+                  className="text-white p-6 rounded-sm shadow-xl relative overflow-hidden transition-all duration-1000 h-[180px] flex flex-col justify-between"
+                  style={{ backgroundColor: themeColor, background: `linear-gradient(135deg, ${themeColor} 0%, ${themeColor}CC 100%)` }}
+                >
+                  <div className="flex justify-between items-start relative z-10">
+                    <h2 className="text-white/60 text-[10px] font-black uppercase tracking-[0.2em]">净资产规模</h2>
+                    <div className="flex gap-2">
+                      <button onClick={() => setShowDistribution('asset')} className="h-8 w-8 flex items-center justify-center bg-white/10 hover:bg-white/20 rounded-sm text-white border border-white/10 transition-colors">
+                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 2v10l8.5 5"/></svg>
+                      </button>
+                      <button onClick={() => setShowGlobalChart(true)} className="h-8 w-8 flex items-center justify-center bg-white/10 hover:bg-white/20 rounded-sm text-white border border-white/10 transition-colors">
+                        <Icons.Chart className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
-                </div>
-                <div className="text-3xl font-mono font-black relative z-10 tracking-tighter text-white">
-                  {new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY', maximumFractionDigits: 0 }).format(stats.netWorth)}
-                </div>
-                <div className="grid grid-cols-2 gap-3 relative z-10 border-t border-white/10 pt-3">
-                  <div className="bg-white/10 p-2 rounded-sm border border-white/5">
-                    <span className="text-[8px] font-black text-white/50 uppercase block">总资产</span>
-                    <span className="text-sm font-bold text-white">¥{stats.totalAssets.toLocaleString()}</span>
+                  <div className="text-3xl font-mono font-black relative z-10 tracking-tighter text-white">
+                    {new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY', maximumFractionDigits: 0 }).format(stats.netWorth)}
                   </div>
-                  <div className="bg-black/10 p-2 rounded-sm border border-white/5 text-right">
-                    <span className="text-[8px] font-black text-white/50 uppercase block">负债</span>
-                    <span className="text-sm font-bold text-rose-200">-¥{stats.totalLiabilities.toLocaleString()}</span>
+                  <div className="grid grid-cols-2 gap-3 relative z-10 border-t border-white/10 pt-3">
+                    <div className="bg-white/10 p-2 rounded-sm border border-white/5">
+                      <span className="text-[8px] font-black text-white/50 uppercase block">总资产</span>
+                      <span className="text-sm font-bold text-white">¥{stats.totalAssets.toLocaleString()}</span>
+                    </div>
+                    <div className="bg-black/10 p-2 rounded-sm border border-white/5 text-right">
+                      <span className="text-[8px] font-black text-white/50 uppercase block">负债</span>
+                      <span className="text-sm font-bold text-rose-200">-¥{stats.totalLiabilities.toLocaleString()}</span>
+                    </div>
                   </div>
+                </section>
+              </div>
+              <div className="lg:col-span-2 overflow-hidden">
+                <div className="flex flex-col md:flex-row md:justify-between md:items-center mb-4 gap-4">
+                  <div className="flex-1 min-w-0">
+                    <h2 className="text-lg font-black text-slate-900 uppercase tracking-tighter">资产账户清单</h2>
+                    <div className="max-w-full overflow-hidden">
+                      <FilterBar 
+                        selected={selectedAssetCategory} 
+                        onSelect={setSelectedAssetCategory} 
+                        categories={assetCategoryList} 
+                        onAdd={handleAddAssetCategory}
+                        type="asset"
+                        themeColor={themeColor}
+                        isThemeDark={isThemeDark}
+                        startLongPress={startLongPress}
+                        clearLongPress={clearLongPress}
+                      />
+                    </div>
+                  </div>
+                  <button onClick={() => setIsModalOpen(true)} className="flex items-center justify-center gap-2 text-white px-5 h-10 rounded-sm text-[10px] font-black uppercase tracking-widest transition-all shadow-md active:scale-95 flex-shrink-0 md:mt-6" style={{ backgroundColor: themeColor }}>
+                    <Icons.Plus className="w-4 h-4" /> <span>新增账户</span>
+                  </button>
                 </div>
-              </section>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {filteredAssets.map(asset => (
+                    <AssetCard key={asset.id} asset={asset} onDelete={(id) => setAssets(prev => prev.filter(a => a.id !== id))} onUpdate={handleUpdateAsset} onShowChart={setViewingAssetChart} onEditFull={setEditingAsset} onVisible={onAssetVisible} />
+                  ))}
+                </div>
+              </div>
             </div>
-            <div className="lg:col-span-2 overflow-hidden">
-              <div className="flex flex-col md:flex-row md:justify-between md:items-center mb-4 gap-4">
-                <div className="flex-1 min-w-0">
-                  <h2 className="text-lg font-black text-slate-900 uppercase tracking-tighter">资产账户清单</h2>
+          </div>
+
+          {/* Budget Tab Content */}
+          <div className="w-full flex-shrink-0 px-4">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
+              <div className="lg:col-span-1 space-y-6">
+                <section 
+                  className="text-white p-6 rounded-sm shadow-xl relative overflow-hidden transition-all duration-1000 h-[180px] flex flex-col justify-between"
+                  style={{ backgroundColor: themeColor, background: `linear-gradient(135deg, ${themeColor} 0%, ${themeColor}CC 100%)` }}
+                >
+                  <div className="flex justify-between items-start relative z-10">
+                    <h2 className="text-white/60 text-[10px] font-black uppercase tracking-[0.2em]">月度预算剩余</h2>
+                    <div className="flex gap-2 items-center">
+                      <button onClick={() => setShowDistribution('budget')} className="h-8 w-8 flex items-center justify-center bg-white/10 hover:bg-white/20 rounded-sm text-white border border-white/10 transition-colors">
+                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 2v10l8.5 5"/></svg>
+                      </button>
+                      <div className="h-8 px-2 flex items-center bg-white/10 rounded-sm text-[10px] font-black border border-white/10 tracking-widest">
+                        {Math.round((budgetStats.spent / (budgetStats.limit || 1)) * 100)}%
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-3xl font-mono font-black relative z-10 tracking-tighter text-white">
+                    {new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY', maximumFractionDigits: 0 }).format(budgetStats.remaining)}
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 relative z-10 border-t border-white/10 pt-3">
+                    <div className="bg-white/10 p-2 rounded-sm border border-white/5 overflow-hidden">
+                      <span className="text-[8px] font-black text-white/50 uppercase block">总预算</span>
+                      {isEditingTotalLimit ? (
+                        <input 
+                          autoFocus
+                          type="number"
+                          value={tempTotalLimit}
+                          onChange={(e) => setTempTotalLimit(e.target.value)}
+                          onBlur={handleSaveTotalLimit}
+                          onKeyDown={(e) => e.key === 'Enter' && handleSaveTotalLimit()}
+                          className="w-full bg-white/20 text-white font-bold text-sm px-1 rounded-sm outline-none border-none"
+                        />
+                      ) : (
+                        <span 
+                          onClick={() => { setIsEditingTotalLimit(true); setTempTotalLimit(budgetStats.limit.toString()); }}
+                          className="text-sm font-bold text-white cursor-pointer hover:bg-white/5 px-0.5 rounded-sm transition-colors block"
+                        >
+                          ¥{budgetStats.limit.toLocaleString()}
+                        </span>
+                      )}
+                    </div>
+                    <div className="bg-black/10 p-2 rounded-sm border border-white/5 text-right">
+                      <span className="text-[8px] font-black text-white/50 uppercase block">已确认支出</span>
+                      <span className="text-sm font-bold text-white">¥{budgetStats.spent.toLocaleString()}</span>
+                    </div>
+                  </div>
+                </section>
+              </div>
+              <div className="lg:col-span-2 overflow-hidden">
+                <div className="mb-4">
+                  <h2 className="text-lg font-black text-slate-900 uppercase tracking-tighter">消费预算计划</h2>
                   <div className="max-w-full overflow-hidden">
                     <FilterBar 
-                      selected={selectedAssetCategory} 
-                      onSelect={setSelectedAssetCategory} 
-                      categories={assetCategoryList} 
-                      onAdd={handleAddAssetCategory}
-                      type="asset"
+                      selected={selectedBudgetCategory} 
+                      onSelect={setSelectedBudgetCategory} 
+                      categories={budgetCategoryList}
+                      onAdd={handleAddBudgetCategory}
+                      type="budget"
                       themeColor={themeColor}
                       isThemeDark={isThemeDark}
                       startLongPress={startLongPress}
@@ -489,156 +584,78 @@ const App: React.FC = () => {
                     />
                   </div>
                 </div>
-                <button onClick={() => setIsModalOpen(true)} className="flex items-center justify-center gap-2 text-white px-5 h-10 rounded-sm text-[10px] font-black uppercase tracking-widest transition-all shadow-md active:scale-95 flex-shrink-0 md:mt-6" style={{ backgroundColor: themeColor }}>
-                  <Icons.Plus className="w-4 h-4" /> <span>新增账户</span>
-                </button>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {filteredAssets.map(asset => (
-                  <AssetCard key={asset.id} asset={asset} onDelete={(id) => setAssets(prev => prev.filter(a => a.id !== id))} onUpdate={handleUpdateAsset} onShowChart={setViewingAssetChart} onEditFull={setEditingAsset} onVisible={onAssetVisible} />
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'budget' && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start animate-in fade-in duration-500">
-            <div className="lg:col-span-1 space-y-6">
-              <section 
-                className="text-white p-6 rounded-sm shadow-xl relative overflow-hidden transition-all duration-1000 h-[180px] flex flex-col justify-between"
-                style={{ backgroundColor: themeColor, background: `linear-gradient(135deg, ${themeColor} 0%, ${themeColor}CC 100%)` }}
-              >
-                <div className="flex justify-between items-start relative z-10">
-                  <h2 className="text-white/60 text-[10px] font-black uppercase tracking-[0.2em]">月度预算剩余</h2>
-                  <div className="flex gap-2 items-center">
-                    <button onClick={() => setShowDistribution('budget')} className="h-8 w-8 flex items-center justify-center bg-white/10 hover:bg-white/20 rounded-sm text-white border border-white/10 transition-colors">
-                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 2v10l8.5 5"/></svg>
-                    </button>
-                    <div className="h-8 px-2 flex items-center bg-white/10 rounded-sm text-[10px] font-black border border-white/10 tracking-widest">
-                      {Math.round((budgetStats.spent / (budgetStats.limit || 1)) * 100)}%
-                    </div>
-                  </div>
-                </div>
-                <div className="text-3xl font-mono font-black relative z-10 tracking-tighter text-white">
-                  {new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY', maximumFractionDigits: 0 }).format(budgetStats.remaining)}
-                </div>
-                <div className="grid grid-cols-2 gap-3 relative z-10 border-t border-white/10 pt-3">
-                  <div className="bg-white/10 p-2 rounded-sm border border-white/5 overflow-hidden">
-                    <span className="text-[8px] font-black text-white/50 uppercase block">总预算</span>
-                    {isEditingTotalLimit ? (
-                      <input 
-                        autoFocus
-                        type="number"
-                        value={tempTotalLimit}
-                        onChange={(e) => setTempTotalLimit(e.target.value)}
-                        onBlur={handleSaveTotalLimit}
-                        onKeyDown={(e) => e.key === 'Enter' && handleSaveTotalLimit()}
-                        className="w-full bg-white/20 text-white font-bold text-sm px-1 rounded-sm outline-none border-none"
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {filteredBudgets.map((b) => {
+                    const realIndex = budgets.indexOf(b);
+                    return (
+                      <BudgetCard 
+                        key={realIndex} 
+                        budget={b} 
+                        index={realIndex} 
+                        themeColor={themeColor} 
+                        onUpdate={handleUpdateBudget} 
+                        onEditFull={setEditingBudgetIndex} 
+                        onQuickAdd={setQuickAddIndex} 
                       />
-                    ) : (
-                      <span 
-                        onClick={() => { setIsEditingTotalLimit(true); setTempTotalLimit(budgetStats.limit.toString()); }}
-                        className="text-sm font-bold text-white cursor-pointer hover:bg-white/5 px-0.5 rounded-sm transition-colors block"
-                      >
-                        ¥{budgetStats.limit.toLocaleString()}
-                      </span>
-                    )}
-                  </div>
-                  <div className="bg-black/10 p-2 rounded-sm border border-white/5 text-right">
-                    <span className="text-[8px] font-black text-white/50 uppercase block">已确认支出</span>
-                    <span className="text-sm font-bold text-white">¥{budgetStats.spent.toLocaleString()}</span>
-                  </div>
+                    );
+                  })}
                 </div>
-              </section>
-            </div>
-            <div className="lg:col-span-2 overflow-hidden">
-              <div className="mb-4">
-                <h2 className="text-lg font-black text-slate-900 uppercase tracking-tighter">消费预算计划</h2>
-                <div className="max-w-full overflow-hidden">
-                  <FilterBar 
-                    selected={selectedBudgetCategory} 
-                    onSelect={setSelectedBudgetCategory} 
-                    categories={budgetCategoryList}
-                    onAdd={handleAddBudgetCategory}
-                    type="budget"
-                    themeColor={themeColor}
-                    isThemeDark={isThemeDark}
-                    startLongPress={startLongPress}
-                    clearLongPress={clearLongPress}
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {filteredBudgets.map((b) => {
-                  const realIndex = budgets.indexOf(b);
-                  return (
-                    <BudgetCard 
-                      key={realIndex} 
-                      budget={b} 
-                      index={realIndex} 
-                      themeColor={themeColor} 
-                      onUpdate={handleUpdateBudget} 
-                      onEditFull={setEditingBudgetIndex} 
-                      onQuickAdd={setQuickAddIndex} 
-                    />
-                  );
-                })}
               </div>
             </div>
           </div>
-        )}
 
-        {activeTab === 'settings' && (
-          <div className="max-w-2xl mx-auto space-y-8 animate-in fade-in duration-500">
-            <div className="bg-white border border-slate-200 rounded-sm shadow-sm overflow-hidden p-8 space-y-8">
-              <div className="-mx-8 -mt-8 px-8 py-6 mb-2" style={{ background: `linear-gradient(135deg, ${themeColor}, ${themeColor}22)` }}>
-                <h2 className={`text-2xl font-black uppercase tracking-tighter ${isThemeDark ? 'text-white' : 'text-slate-900'}`}>应用设置</h2>
-              </div>
-              <section>
-                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">应用主题色</label>
-                <div className="grid grid-cols-5 md:grid-cols-10 gap-3">
-                  {THEME_COLORS.map(color => (
-                    <button key={color} onClick={() => { setThemeColor(color); setIsAutoTheme(false); }} style={{ backgroundColor: color }} className={`w-full aspect-square rounded-sm border-2 ${themeColor === color ? 'border-slate-900 ring-4 ring-slate-900/10' : 'border-slate-100'} transition-all hover:scale-105 active:scale-95`} />
-                  ))}
+          {/* Settings Tab Content */}
+          <div className="w-full flex-shrink-0 px-4">
+            <div className="max-w-2xl mx-auto space-y-8">
+              <div className="bg-white border border-slate-200 rounded-sm shadow-sm overflow-hidden p-8 space-y-8">
+                <div className="-mx-8 -mt-8 px-8 py-6 mb-2" style={{ background: `linear-gradient(135deg, ${themeColor}, ${themeColor}22)` }}>
+                  <h2 className={`text-2xl font-black uppercase tracking-tighter ${isThemeDark ? 'text-white' : 'text-slate-900'}`}>应用设置</h2>
                 </div>
-              </section>
-              <div className="grid grid-cols-1 gap-4 pt-6 border-t border-slate-100">
-                <div className="border border-slate-100 rounded-sm overflow-hidden">
-                   <button onClick={() => setIsAssetCatExpanded(!isAssetCatExpanded)} className="w-full flex items-center justify-between p-4 bg-slate-50 hover:bg-slate-100 transition-colors">
-                     <label className="block text-[10px] font-black text-slate-600 uppercase tracking-widest cursor-pointer">资产分类管理</label>
-                     <div className={`transition-transform duration-300 ${isAssetCatExpanded ? 'rotate-180' : ''}`}>
-                       <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 9l-7 7-7-7" /></svg>
-                     </div>
-                   </button>
-                   {isAssetCatExpanded && <div className="p-4 border-t border-slate-100"><CategoryManager list={assetCategoryList} onAdd={handleAddAssetCategory} onRename={handleRenameCategoryAction} onDelete={handleDeleteCategoryAction} type="asset" /></div>}
+                <section>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">应用主题色</label>
+                  <div className="grid grid-cols-5 md:grid-cols-10 gap-3">
+                    {THEME_COLORS.map(color => (
+                      <button key={color} onClick={() => { setThemeColor(color); setIsAutoTheme(false); }} style={{ backgroundColor: color }} className={`w-full aspect-square rounded-sm border-2 ${themeColor === color ? 'border-slate-900 ring-4 ring-slate-900/10' : 'border-slate-100'} transition-all hover:scale-105 active:scale-95`} />
+                    ))}
+                  </div>
+                </section>
+                <div className="grid grid-cols-1 gap-4 pt-6 border-t border-slate-100">
+                  <div className="border border-slate-100 rounded-sm overflow-hidden">
+                    <button onClick={() => setIsAssetCatExpanded(!isAssetCatExpanded)} className="w-full flex items-center justify-between p-4 bg-slate-50 hover:bg-slate-100 transition-colors">
+                      <label className="block text-[10px] font-black text-slate-600 uppercase tracking-widest cursor-pointer">资产分类管理</label>
+                      <div className={`transition-transform duration-300 ${isAssetCatExpanded ? 'rotate-180' : ''}`}>
+                        <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 9l-7 7-7-7" /></svg>
+                      </div>
+                    </button>
+                    {isAssetCatExpanded && <div className="p-4 border-t border-slate-100"><CategoryManager list={assetCategoryList} onAdd={handleAddAssetCategory} onRename={handleRenameCategoryAction} onDelete={handleDeleteCategoryAction} type="asset" /></div>}
+                  </div>
+                  <div className="border border-slate-100 rounded-sm overflow-hidden">
+                    <button onClick={() => setIsBudgetCatExpanded(!isBudgetCatExpanded)} className="w-full flex items-center justify-between p-4 bg-slate-50 hover:bg-slate-100 transition-colors">
+                      <label className="block text-[10px] font-black text-slate-600 uppercase tracking-widest cursor-pointer">预算大类管理</label>
+                      <div className={`transition-transform duration-300 ${isBudgetCatExpanded ? 'rotate-180' : ''}`}>
+                        <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 9l-7 7-7-7" /></svg>
+                      </div>
+                    </button>
+                    {isBudgetCatExpanded && <div className="p-4 border-t border-slate-100"><CategoryManager list={budgetCategoryList} onAdd={handleAddBudgetCategory} onRename={handleRenameCategoryAction} onDelete={handleDeleteCategoryAction} type="budget" /></div>}
+                  </div>
                 </div>
-                <div className="border border-slate-100 rounded-sm overflow-hidden">
-                   <button onClick={() => setIsBudgetCatExpanded(!isBudgetCatExpanded)} className="w-full flex items-center justify-between p-4 bg-slate-50 hover:bg-slate-100 transition-colors">
-                     <label className="block text-[10px] font-black text-slate-600 uppercase tracking-widest cursor-pointer">预算大类管理</label>
-                     <div className={`transition-transform duration-300 ${isBudgetCatExpanded ? 'rotate-180' : ''}`}>
-                       <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 9l-7 7-7-7" /></svg>
-                     </div>
-                   </button>
-                   {isBudgetCatExpanded && <div className="p-4 border-t border-slate-100"><CategoryManager list={budgetCategoryList} onAdd={handleAddBudgetCategory} onRename={handleRenameCategoryAction} onDelete={handleDeleteCategoryAction} type="budget" /></div>}
-                </div>
-              </div>
-              
-              <div className="pt-6 border-t border-slate-100 space-y-4">
-                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">数据管理</label>
-                <div className="flex flex-col gap-4">
-                   <div className="flex gap-4">
-                      <button onClick={handleExportData} className="flex-1 py-3 bg-slate-50 text-slate-600 font-bold text-[10px] uppercase tracking-widest border border-slate-200 rounded-sm hover:bg-slate-100 transition-all active:scale-[0.98]">导出备份</button>
-                      <button onClick={handleImportData} style={{ backgroundColor: themeColor }} className="flex-1 py-3 text-white font-black text-[10px] uppercase tracking-widest rounded-sm hover:brightness-110 shadow-md transition-all active:scale-[0.98]">导入恢复</button>
-                   </div>
-                   <button onClick={handleClearData} className="w-full py-3 bg-rose-50 text-rose-600 border border-rose-200 font-black text-[10px] uppercase tracking-widest rounded-sm hover:bg-rose-100 transition-all active:scale-[0.98]">
-                      清空数据 (保留模板)
-                   </button>
+                
+                <div className="pt-6 border-t border-slate-100 space-y-4">
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">数据管理</label>
+                  <div className="flex flex-col gap-4">
+                    <div className="flex gap-4">
+                        <button onClick={handleExportData} className="flex-1 py-3 bg-slate-50 text-slate-600 font-bold text-[10px] uppercase tracking-widest border border-slate-200 rounded-sm hover:bg-slate-100 transition-all active:scale-[0.98]">导出备份</button>
+                        <button onClick={handleImportData} style={{ backgroundColor: themeColor }} className="flex-1 py-3 text-white font-black text-[10px] uppercase tracking-widest rounded-sm hover:brightness-110 shadow-md transition-all active:scale-[0.98]">导入恢复</button>
+                    </div>
+                    <button onClick={handleClearData} className="w-full py-3 bg-rose-50 text-rose-600 border border-rose-200 font-black text-[10px] uppercase tracking-widest rounded-sm hover:bg-rose-100 transition-all active:scale-[0.98]">
+                        清空数据 (保留模板)
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        )}
+        </div>
       </main>
 
       <div className="fixed bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-slate-50 via-slate-50/80 to-transparent pointer-events-none z-30" />
@@ -655,6 +672,7 @@ const App: React.FC = () => {
         ))}
       </nav>
 
+      {/* Modals and Overlays */}
       {showDistribution && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in zoom-in-95 duration-300" onClick={() => setShowDistribution(null)}>
           <div className="bg-white rounded-sm w-full max-w-lg p-8 shadow-2xl border border-white/20 overflow-y-auto max-h-[90vh]" onClick={e => e.stopPropagation()}>
@@ -666,41 +684,21 @@ const App: React.FC = () => {
             <div className="h-[250px] w-full mb-6">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
-                  <Pie 
-                    data={showDistribution === 'asset' ? assetDistributionData : budgetDistributionData} 
-                    cx="50%" 
-                    cy="50%" 
-                    innerRadius={60} 
-                    outerRadius={90} 
-                    paddingAngle={5} 
-                    dataKey="value" 
-                    stroke="none"
-                  >
+                  <Pie data={showDistribution === 'asset' ? assetDistributionData : budgetDistributionData} cx="50%" cy="50%" innerRadius={60} outerRadius={90} paddingAngle={5} dataKey="value" stroke="none">
                     {(showDistribution === 'asset' ? assetDistributionData : budgetDistributionData).map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={showDistribution === 'asset' ? (CategoryColors[entry.name as keyof typeof CategoryColors] || themeColor) : THEME_COLORS[index % THEME_COLORS.length]} />
                     ))}
                   </Pie>
-                  <Tooltip 
-                    formatter={(value: number) => [`¥${value.toLocaleString()}`, '金额']} 
-                    contentStyle={{ borderRadius: '2px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', fontSize: '10px', fontWeight: 900 }} 
-                  />
+                  <Tooltip formatter={(value: number) => [`¥${value.toLocaleString()}`, '金额']} contentStyle={{ borderRadius: '2px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', fontSize: '10px', fontWeight: 900 }} />
                 </PieChart>
               </ResponsiveContainer>
             </div>
 
             <div className="space-y-2 pt-4 border-t border-slate-100">
-               <div className="flex justify-between text-[8px] font-black text-slate-400 uppercase tracking-widest mb-2 px-1">
-                 <span>分类名称</span>
-                 <div className="flex gap-8">
-                   <span>占比</span>
-                   <span className="w-20 text-right">金额</span>
-                 </div>
-               </div>
                {[...(showDistribution === 'asset' ? assetDistributionData : budgetDistributionData)].sort((a,b) => b.value - a.value).map((item, index) => {
                  const total = (showDistribution === 'asset' ? assetDistributionData : budgetDistributionData).reduce((sum, i) => sum + i.value, 0);
                  const percent = total > 0 ? (item.value / total * 100).toFixed(1) : '0.0';
                  const color = showDistribution === 'asset' ? (CategoryColors[item.name as keyof typeof CategoryColors] || themeColor) : THEME_COLORS[index % THEME_COLORS.length];
-                 
                  return (
                    <div key={item.name} className="flex justify-between items-center p-3 bg-slate-50 rounded-sm border border-slate-100 hover:border-slate-200 transition-colors">
                      <div className="flex items-center gap-2">
@@ -714,14 +712,9 @@ const App: React.FC = () => {
                    </div>
                  );
                })}
-               <div 
-                 className="flex justify-between items-center p-3 mt-4 rounded-sm transition-colors duration-500"
-                 style={{ backgroundColor: themeColor, color: isThemeDark ? '#fff' : '#0f172a' }}
-               >
+               <div className="flex justify-between items-center p-3 mt-4 rounded-sm transition-colors duration-500" style={{ backgroundColor: themeColor, color: isThemeDark ? '#fff' : '#0f172a' }}>
                  <span className="text-[10px] font-black uppercase tracking-widest">总计</span>
-                 <span className="text-[12px] font-mono font-black">
-                   ¥{(showDistribution === 'asset' ? assetDistributionData : budgetDistributionData).reduce((sum, i) => sum + i.value, 0).toLocaleString()}
-                 </span>
+                 <span className="text-[12px] font-mono font-black">¥{(showDistribution === 'asset' ? assetDistributionData : budgetDistributionData).reduce((sum, i) => sum + i.value, 0).toLocaleString()}</span>
                </div>
             </div>
           </div>
@@ -749,6 +742,7 @@ const App: React.FC = () => {
           </div>
         </div>
       )}
+
       <AddAssetModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onAdd={(newAsset) => setAssets([...assets, { ...newAsset, id: Math.random().toString(36).substr(2, 9), currency: 'CNY', lastUpdated: new Date().toLocaleDateString('zh-CN'), history: [{ date: new Date().toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' }), value: newAsset.value }] }])} assetCategoryList={assetCategoryList} />
       {editingAsset && <AddAssetModal isOpen={!!editingAsset} onClose={() => setEditingAsset(null)} onAdd={(data) => { handleUpdateAsset(editingAsset.id, data); setEditingAsset(null); }} initialData={editingAsset} assetCategoryList={assetCategoryList} />}
       
