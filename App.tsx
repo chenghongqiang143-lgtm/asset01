@@ -397,6 +397,21 @@ const App: React.FC = () => {
     setEditingCategory(null);
   };
 
+  const handleDeleteHistoryPoint = (assetId: string, index: number) => {
+    if (!confirm('确定要删除这条记录吗？')) return;
+    setAssets(prev => prev.map(a => {
+      if (a.id === assetId) {
+        const newHistory = [...a.history];
+        newHistory.splice(index, 1);
+        if (viewingAssetChart && viewingAssetChart.id === assetId) {
+          setViewingAssetChart({ ...a, history: newHistory });
+        }
+        return { ...a, history: newHistory };
+      }
+      return a;
+    }));
+  };
+
   const handleExportData = () => {
     const data = { assets, budgets, budgetCategoryList, assetCategoryList, themeColor, isAutoTheme, customCategoryColors };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -772,6 +787,30 @@ const App: React.FC = () => {
                 </AreaChart>
               </ResponsiveContainer>
             </div>
+            
+            {viewingAssetChart && (
+                <div className="mt-6 border-t border-slate-100 pt-4">
+                    <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3">历史记录管理</h3>
+                    <div className="max-h-48 overflow-y-auto space-y-1 pr-2">
+                        {[...viewingAssetChart.history].map((h, i) => ({...h, originalIndex: i})).reverse().map((point) => (
+                            <div key={point.originalIndex} className="flex items-center justify-between p-2 rounded-sm hover:bg-slate-50 group transition-colors border border-transparent hover:border-slate-100">
+                                <div className="flex items-center gap-4">
+                                    <span className="text-[10px] font-black text-slate-400 font-mono w-20">{point.date}</span>
+                                    <span className="text-sm font-bold text-slate-700 font-mono">¥{point.value.toLocaleString()}</span>
+                                </div>
+                                <button 
+                                    onClick={() => handleDeleteHistoryPoint(viewingAssetChart.id, point.originalIndex)}
+                                    className="p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-sm transition-all opacity-0 group-hover:opacity-100"
+                                    title="删除记录"
+                                >
+                                    <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                </button>
+                            </div>
+                        ))}
+                        {viewingAssetChart.history.length === 0 && <div className="text-center py-4 text-xs text-slate-300 font-bold">暂无记录</div>}
+                    </div>
+                </div>
+            )}
           </div>
         </div>
       )}
