@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef, memo } from 'react';
-import { Asset, AssetCategory, CategoryColors, HistoryPoint, Budget } from './types';
+import { Asset, AssetCategory, CategoryColors, HistoryPoint, Budget, Transaction } from './types';
 import { Icons } from './constants';
 import AssetCard from './components/AssetCard';
 import BudgetCard from './components/BudgetCard';
@@ -49,10 +49,10 @@ const INITIAL_ASSETS: Asset[] = [
 ];
 
 const INITIAL_BUDGETS: Budget[] = [
-  { category: '总计', monthlyAmount: 8000, spentThisMonth: 3200, carryOver: 500 },
-  { category: '生活', subCategory: '餐饮', monthlyAmount: 3000, spentThisMonth: 1800, carryOver: 200, notes: '吃饭相关', color: '#f43f5e' },
-  { category: '生活', subCategory: '购物', monthlyAmount: 2000, spentThisMonth: 500, carryOver: 0, notes: '剁手买买买', color: '#ec4899' },
-  { category: '生活', subCategory: '交通', monthlyAmount: 500, spentThisMonth: 120, carryOver: 0, color: '#3b82f6' },
+  { category: '总计', monthlyAmount: 8000, spentThisMonth: 3200, carryOver: 500, transactions: [] },
+  { category: '生活', subCategory: '餐饮', monthlyAmount: 3000, spentThisMonth: 1800, carryOver: 200, notes: '吃饭相关', color: '#f43f5e', transactions: [] },
+  { category: '生活', subCategory: '购物', monthlyAmount: 2000, spentThisMonth: 500, carryOver: 0, notes: '剁手买买买', color: '#ec4899', transactions: [] },
+  { category: '生活', subCategory: '交通', monthlyAmount: 500, spentThisMonth: 120, carryOver: 0, color: '#3b82f6', transactions: [] },
 ];
 
 const THEME_COLORS = [
@@ -147,9 +147,16 @@ export const App: React.FC = () => {
   const [importText, setImportText] = useState('');
 
   const [editingBudgetIndex, setEditingBudgetIndex] = useState<number | null>(null);
+  const [viewingTransactionsIndex, setViewingTransactionsIndex] = useState<number | null>(null);
+
   const [quickAddIndex, setQuickAddIndex] = useState<number | null>(null);
   const [quickAmount, setQuickAmount] = useState('');
   const [editingCategory, setEditingCategory] = useState<{name: string, type: 'asset' | 'budget'} | null>(null);
+
+  // New state for adding transaction inside transaction modal
+  const [isAddingTransaction, setIsAddingTransaction] = useState(false);
+  const [newTransactionAmount, setNewTransactionAmount] = useState('');
+  const [newTransactionNote, setNewTransactionNote] = useState('');
 
   const [isEditingTotalLimit, setIsEditingTotalLimit] = useState(false);
   const [tempTotalLimit, setTempTotalLimit] = useState('');
@@ -366,11 +373,33 @@ export const App: React.FC = () => {
     });
   }, []);
 
+  const handleAddNewBudget = () => {
+    // If a specific category is selected in the filter bar, use it. Otherwise, default to first available.
+    const defaultCategory = selectedBudgetCategory !== '全部' && budgetCategoryList.includes(selectedBudgetCategory)
+      ? selectedBudgetCategory
+      : (budgetCategoryList[0] || '生活');
+
+    const newBudget: Budget = {
+      category: defaultCategory,
+      subCategory: '新预算项目',
+      monthlyAmount: 0,
+      spentThisMonth: 0,
+      carryOver: 0,
+      color: themeColor,
+      transactions: []
+    };
+    setBudgets(prev => {
+        const next = [...prev, newBudget];
+        setTimeout(() => setEditingBudgetIndex(next.length - 1), 0);
+        return next;
+    });
+  };
+
   const handleSaveTotalLimit = () => {
-    const val = parseFloat(tempTotalLimit);
-    if (!isNaN(val)) {
+    const floatVal = parseFloat(tempTotalLimit);
+    if (!isNaN(floatVal)) {
       const totalIdx = budgets.findIndex(b => b.category === '总计');
-      if (totalIdx !== -1) handleUpdateBudget(totalIdx, { monthlyAmount: val });
+      if (totalIdx !== -1) handleUpdateBudget(totalIdx, { monthlyAmount: floatVal });
     }
     setIsEditingTotalLimit(false);
   };
@@ -397,11 +426,58 @@ export const App: React.FC = () => {
     if (quickAddIndex !== null) {
       const amount = parseFloat(quickAmount);
       if (!isNaN(amount)) {
-        handleUpdateBudget(quickAddIndex, { spentThisMonth: budgets[quickAddIndex].spentThisMonth + amount });
+        // Create new transaction
+        const newTransaction: Transaction = {
+          id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+          amount: amount,
+          date: new Date().toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' }),
+          note: '快速记录'
+        };
+        
+        const currentBudget = budgets[quickAddIndex];
+        const updatedTransactions = [newTransaction, ...(currentBudget.transactions || [])];
+        
+        handleUpdateBudget(quickAddIndex, { 
+          spentThisMonth: currentBudget.spentThisMonth + amount,
+          transactions: updatedTransactions
+        });
       }
     }
     setQuickAddIndex(null);
     setQuickAmount('');
+  };
+
+  const handleManualAddTransaction = () => {
+    if (viewingTransactionsIndex === null) return;
+    const amount = parseFloat(newTransactionAmount);
+    if (!isNaN(amount) && amount !== 0) {
+      const newTransaction: Transaction = {
+        id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+        amount: amount,
+        date: new Date().toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' }),
+        note: newTransactionNote || '补录账单'
+      };
+      const currentBudget = budgets[viewingTransactionsIndex];
+      const updatedTransactions = [newTransaction, ...(currentBudget.transactions || [])];
+      
+      handleUpdateBudget(viewingTransactionsIndex, { 
+        spentThisMonth: currentBudget.spentThisMonth + amount,
+        transactions: updatedTransactions
+      });
+      setIsAddingTransaction(false);
+      setNewTransactionAmount('');
+      setNewTransactionNote('');
+    }
+  };
+
+  const handleDeleteTransaction = (budgetIndex: number, transactionId: string, amount: number) => {
+    const budget = budgets[budgetIndex];
+    const newTransactions = (budget.transactions || []).filter(t => t.id !== transactionId);
+    
+    handleUpdateBudget(budgetIndex, {
+      spentThisMonth: budget.spentThisMonth - amount,
+      transactions: newTransactions
+    });
   };
 
   const onAssetVisible = useCallback((id: string, color: string) => {
@@ -555,7 +631,7 @@ export const App: React.FC = () => {
       history: [{ date: new Date().toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' }), value: 0 }],
       lastUpdated: new Date().toLocaleDateString('zh-CN')
     })));
-    setBudgets(prev => prev.map(b => ({ ...b, spentThisMonth: 0 })));
+    setBudgets(prev => prev.map(b => ({ ...b, spentThisMonth: 0, transactions: [] })));
     alert('数据已清空。');
   };
 
@@ -729,21 +805,26 @@ export const App: React.FC = () => {
                 </section>
               </div>
               <div className="lg:col-span-2 overflow-hidden">
-                <div className="mb-4">
-                  <h2 className="text-lg font-black text-slate-900 uppercase tracking-tighter">消费预算计划</h2>
-                  <div className="max-w-full overflow-hidden">
-                    <FilterBar 
-                      selected={selectedBudgetCategory} 
-                      onSelect={setSelectedBudgetCategory} 
-                      categories={budgetCategoryList}
-                      onAdd={handleAddBudgetCategory}
-                      type="budget"
-                      themeColor={themeColor}
-                      isThemeDark={isThemeDark}
-                      startLongPress={startLongPress}
-                      clearLongPress={clearLongPress}
-                    />
+                <div className="flex flex-col md:flex-row md:justify-between md:items-center mb-4 gap-4">
+                  <div className="flex-1 min-w-0">
+                    <h2 className="text-lg font-black text-slate-900 uppercase tracking-tighter">消费预算计划</h2>
+                    <div className="max-w-full overflow-hidden">
+                      <FilterBar 
+                        selected={selectedBudgetCategory} 
+                        onSelect={setSelectedBudgetCategory} 
+                        categories={budgetCategoryList}
+                        onAdd={handleAddBudgetCategory}
+                        type="budget"
+                        themeColor={themeColor}
+                        isThemeDark={isThemeDark}
+                        startLongPress={startLongPress}
+                        clearLongPress={clearLongPress}
+                      />
+                    </div>
                   </div>
+                  <button onClick={handleAddNewBudget} className="flex items-center justify-center gap-2 text-white px-5 h-10 rounded text-[10px] font-black uppercase tracking-widest transition-all shadow-md active:scale-95 flex-shrink-0 md:mt-6" style={{ backgroundColor: themeColor }}>
+                    <Icons.Plus className="w-4 h-4" /> <span>新增预算</span>
+                  </button>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {filteredBudgets.map((b) => {
@@ -757,6 +838,7 @@ export const App: React.FC = () => {
                         onUpdate={handleUpdateBudget} 
                         onEditFull={setEditingBudgetIndex} 
                         onQuickAdd={setQuickAddIndex} 
+                        onViewTransactions={setViewingTransactionsIndex}
                       />
                     );
                   })}
@@ -950,7 +1032,14 @@ export const App: React.FC = () => {
           </div>
         </div>
       )}
-      <AddAssetModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onAdd={(newAsset) => setAssets([...assets, { ...newAsset, id: Math.random().toString(36).substr(2, 9), currency: 'CNY', lastUpdated: new Date().toLocaleDateString('zh-CN'), history: [{ date: new Date().toISOString().split('T')[0], value: newAsset.value }] }])} assetCategoryList={assetCategoryList} categoryColors={customCategoryColors} />
+      <AddAssetModal 
+        isOpen={isModalOpen} 
+        onClose={() => setIsModalOpen(false)} 
+        onAdd={(newAsset) => setAssets([...assets, { ...newAsset, id: Math.random().toString(36).substr(2, 9), currency: 'CNY', lastUpdated: new Date().toLocaleDateString('zh-CN'), history: [{ date: new Date().toISOString().split('T')[0], value: newAsset.value }] }])} 
+        assetCategoryList={assetCategoryList} 
+        categoryColors={customCategoryColors}
+        defaultCategory={selectedAssetCategory !== '全部' ? selectedAssetCategory : undefined}
+      />
       {editingAsset && <AddAssetModal 
         isOpen={!!editingAsset} 
         onClose={() => setEditingAsset(null)} 
@@ -967,7 +1056,7 @@ export const App: React.FC = () => {
       />}
       {editingBudgetIndex !== null && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-xl animate-in zoom-in-95 duration-300">
-          <div className="bg-white rounded w-full max-sm:max-w-xs max-w-sm p-8 shadow-2xl overflow-y-auto max-h-[90vh] overflow-hidden">
+          <div className="bg-white rounded w-full max-sm:max-w-xs max-w-lg p-8 shadow-2xl overflow-y-auto max-h-[90vh] overflow-hidden">
             <div className="-mx-8 -mt-8 px-8 py-6 mb-8" style={{ background: `linear-gradient(135deg, ${budgets[editingBudgetIndex].color || themeColor}, ${(budgets[editingBudgetIndex].color || themeColor)}22)` }}>
                 <h2 className={`text-xl font-black uppercase ${isDarkColor(budgets[editingBudgetIndex].color || themeColor) ? 'text-white' : 'text-slate-900'}`}>编辑预算项目</h2>
             </div>
@@ -984,9 +1073,37 @@ export const App: React.FC = () => {
                   <input type="text" className="w-full px-4 py-3 border border-slate-200 rounded font-bold" value={budgets[editingBudgetIndex].subCategory || ''} onChange={e => handleUpdateBudget(editingBudgetIndex, { subCategory: e.target.value })} placeholder="如：餐饮"/>
                 </div>
               </div>
-              <div>
-                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">月度额度 (¥)</label>
-                <input type="number" className="w-full px-4 py-3 border border-slate-200 rounded font-bold" value={budgets[editingBudgetIndex].monthlyAmount} onChange={e => handleUpdateBudget(editingBudgetIndex, { monthlyAmount: parseFloat(e.target.value) || 0 })} />
+              <div className="grid grid-cols-3 gap-3">
+                  <div className="min-w-0">
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 whitespace-nowrap">日预算(≈)</label>
+                    <input 
+                        type="number" 
+                        className="w-full px-2 py-3 border border-slate-200 rounded font-bold bg-slate-50 text-sm" 
+                        value={budgets[editingBudgetIndex].monthlyAmount ? (budgets[editingBudgetIndex].monthlyAmount / 30).toFixed(0) : ''} 
+                        onChange={e => handleUpdateBudget(editingBudgetIndex, { monthlyAmount: (parseFloat(e.target.value) || 0) * 30 })} 
+                        placeholder="0"
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 whitespace-nowrap">月预算</label>
+                    <input 
+                        type="number" 
+                        className="w-full px-2 py-3 border border-slate-200 rounded font-bold text-sm" 
+                        value={budgets[editingBudgetIndex].monthlyAmount} 
+                        onChange={e => handleUpdateBudget(editingBudgetIndex, { monthlyAmount: parseFloat(e.target.value) || 0 })} 
+                        placeholder="0"
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 whitespace-nowrap">年预算</label>
+                    <input 
+                        type="number" 
+                        className="w-full px-2 py-3 border border-slate-200 rounded font-bold bg-slate-50 text-sm" 
+                        value={budgets[editingBudgetIndex].monthlyAmount * 12} 
+                        onChange={e => handleUpdateBudget(editingBudgetIndex, { monthlyAmount: (parseFloat(e.target.value) || 0) / 12 })} 
+                        placeholder="0"
+                    />
+                  </div>
               </div>
               <div>
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">备注信息</label>
@@ -1013,6 +1130,94 @@ export const App: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Viewing Transactions Modal */}
+      {viewingTransactionsIndex !== null && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-xl animate-in zoom-in-95 duration-300">
+          <div className="bg-white rounded w-full max-sm:max-w-xs max-w-md p-8 shadow-2xl overflow-y-auto max-h-[90vh] overflow-hidden">
+             <div className="-mx-8 -mt-8 px-8 py-6 mb-8" style={{ background: `linear-gradient(135deg, ${budgets[viewingTransactionsIndex].color || themeColor}, ${(budgets[viewingTransactionsIndex].color || themeColor)}22)` }}>
+                 <h2 className={`text-xl font-black uppercase ${isDarkColor(budgets[viewingTransactionsIndex].color || themeColor) ? 'text-white' : 'text-slate-900'}`}>
+                   {budgets[viewingTransactionsIndex].subCategory || '账单流水'}
+                 </h2>
+                 <p className={`text-xs font-bold mt-1 ${isDarkColor(budgets[viewingTransactionsIndex].color || themeColor) ? 'text-white/70' : 'text-slate-500'}`}>
+                    历史消费记录管理
+                 </p>
+             </div>
+
+             <div className="space-y-6">
+                <div className="flex justify-between items-center mb-3">
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">近期流水</label>
+                  {!isAddingTransaction && (
+                    <button 
+                      onClick={() => setIsAddingTransaction(true)}
+                      className="text-[10px] font-black uppercase tracking-widest text-white px-2 py-1 rounded shadow-sm hover:brightness-110 active:scale-95 transition-all"
+                      style={{ backgroundColor: budgets[viewingTransactionsIndex].color || themeColor }}
+                    >
+                      + 补录一笔
+                    </button>
+                  )}
+                </div>
+
+                {isAddingTransaction && (
+                  <div className="mb-4 bg-slate-50 p-3 rounded border border-slate-100 animate-in slide-in-from-top-2">
+                    <div className="flex gap-2 mb-2">
+                       <input 
+                         autoFocus
+                         type="number" 
+                         placeholder="金额" 
+                         className="flex-1 px-3 py-2 border border-slate-200 rounded font-bold text-sm"
+                         value={newTransactionAmount}
+                         onChange={(e) => setNewTransactionAmount(e.target.value)}
+                       />
+                       <input 
+                         type="text" 
+                         placeholder="备注 (选填)" 
+                         className="flex-[2] px-3 py-2 border border-slate-200 rounded font-bold text-sm"
+                         value={newTransactionNote}
+                         onChange={(e) => setNewTransactionNote(e.target.value)}
+                       />
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      <button onClick={() => { setIsAddingTransaction(false); setNewTransactionAmount(''); setNewTransactionNote(''); }} className="px-3 py-1.5 text-slate-400 text-xs font-black uppercase tracking-widest hover:bg-slate-200 rounded transition-colors">取消</button>
+                      <button onClick={handleManualAddTransaction} className="px-3 py-1.5 text-white bg-slate-900 text-xs font-black uppercase tracking-widest rounded hover:bg-slate-800 transition-colors">确认添加</button>
+                    </div>
+                  </div>
+                )}
+
+                <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2">
+                   {(budgets[viewingTransactionsIndex].transactions || []).length > 0 ? (
+                      [...(budgets[viewingTransactionsIndex].transactions || [])].reverse().map(t => (
+                        <div key={t.id} className="flex items-center justify-between p-3 rounded hover:bg-slate-50 border border-transparent hover:border-slate-100 group transition-all">
+                           <div className="flex items-center gap-3">
+                              <span className="text-[10px] font-black text-slate-400 font-mono">{t.date}</span>
+                              <span className="text-xs font-bold text-slate-700">{t.note}</span>
+                           </div>
+                           <div className="flex items-center gap-3">
+                              <span className="text-sm font-black font-mono text-slate-900">¥{t.amount.toLocaleString()}</span>
+                              <button 
+                                onClick={() => handleDeleteTransaction(viewingTransactionsIndex!, t.id, t.amount)}
+                                className="p-1.5 text-slate-300 hover:text-rose-500 rounded hover:bg-rose-50 opacity-0 group-hover:opacity-100 transition-all"
+                              >
+                                <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                              </button>
+                           </div>
+                        </div>
+                      ))
+                   ) : (
+                     <div className="text-center py-8 text-[10px] font-bold text-slate-300">暂无流水记录</div>
+                   )}
+                </div>
+             </div>
+
+             <div className="mt-8">
+                 <button onClick={() => setViewingTransactionsIndex(null)} className="w-full py-4 bg-slate-100 text-slate-600 font-black text-xs uppercase tracking-widest rounded hover:bg-slate-200 transition-all">
+                    关闭
+                 </button>
+             </div>
+          </div>
+        </div>
+      )}
+
       {editingCategory && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm" onClick={() => setEditingCategory(null)}>
           <div className="bg-white p-6 rounded shadow-2xl font-bold text-slate-900 text-sm max-w-xs text-center animate-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
@@ -1020,6 +1225,44 @@ export const App: React.FC = () => {
             <div className="flex gap-3">
               <button onClick={() => setEditingCategory(null)} className="flex-1 py-2 text-slate-400 text-xs font-black uppercase">取消</button>
               <button onClick={handleRenameCategory} style={{ backgroundColor: themeColor }} className="flex-1 py-2 text-white rounded text-xs font-black uppercase tracking-widest">确认重命名</button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Quick Add Transaction Modal */}
+      {quickAddIndex !== null && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm" onClick={() => { setQuickAddIndex(null); setQuickAmount(''); }}>
+          <div className="bg-white p-6 rounded shadow-2xl w-full max-w-xs animate-in zoom-in-95 duration-200 border border-slate-100" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-4">
+               <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">快速记账</span>
+               <h3 className="text-xl font-black text-slate-900">{budgets[quickAddIndex].subCategory || budgets[quickAddIndex].category}</h3>
+            </div>
+            
+            <input 
+              autoFocus
+              type="number" 
+              className="w-full px-4 py-3 border border-slate-200 rounded font-bold text-xl mb-6 focus:ring-2 focus:ring-slate-900/5 outline-none" 
+              placeholder="输入金额"
+              value={quickAmount}
+              onChange={(e) => setQuickAmount(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleQuickAdd()}
+            />
+            
+            <div className="flex gap-3">
+              <button 
+                onClick={() => { setQuickAddIndex(null); setQuickAmount(''); }} 
+                className="flex-1 py-3 text-slate-400 text-xs font-black uppercase tracking-widest hover:bg-slate-50 rounded border border-slate-100 transition-colors"
+              >
+                取消
+              </button>
+              <button 
+                onClick={handleQuickAdd} 
+                style={{ backgroundColor: budgets[quickAddIndex].color || themeColor }} 
+                className="flex-1 py-3 text-white rounded text-xs font-black uppercase tracking-widest shadow-md hover:brightness-110 active:scale-95 transition-all"
+              >
+                确认
+              </button>
             </div>
           </div>
         </div>

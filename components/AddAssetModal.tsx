@@ -9,6 +9,7 @@ interface AddAssetModalProps {
   assetCategoryList: string[];
   categoryColors: Record<string, string>;
   onDelete?: () => void;
+  defaultCategory?: string;
 }
 
 const isDarkColor = (color: string) => {
@@ -21,7 +22,7 @@ const isDarkColor = (color: string) => {
   return brightness < 155;
 };
 
-const AddAssetModal: React.FC<AddAssetModalProps> = ({ isOpen, onClose, onAdd, initialData, assetCategoryList, categoryColors, onDelete }) => {
+const AddAssetModal: React.FC<AddAssetModalProps> = ({ isOpen, onClose, onAdd, initialData, assetCategoryList, categoryColors, onDelete, defaultCategory }) => {
   const [name, setName] = useState('');
   const [category, setCategory] = useState<AssetCategory>(AssetCategory.CASH);
   const [value, setValue] = useState('');
@@ -39,13 +40,17 @@ const AddAssetModal: React.FC<AddAssetModalProps> = ({ isOpen, onClose, onAdd, i
       setNotes(initialData.notes || '');
     } else {
       setName('');
-      setCategory((assetCategoryList[0] as AssetCategory) || AssetCategory.CASH);
+      // Use defaultCategory if provided and valid, otherwise fallback to first in list or CASH
+      const targetCategory = defaultCategory && assetCategoryList.includes(defaultCategory) 
+        ? defaultCategory 
+        : (assetCategoryList[0] || AssetCategory.CASH);
+      setCategory(targetCategory as AssetCategory);
       setValue('');
       setTargetValue('');
       setDurationMonths('');
       setNotes('');
     }
-  }, [initialData, isOpen, assetCategoryList]);
+  }, [initialData, isOpen, assetCategoryList, defaultCategory]);
 
   if (!isOpen) return null;
 

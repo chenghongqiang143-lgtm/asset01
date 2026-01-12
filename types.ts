@@ -41,6 +41,13 @@ export interface Asset {
   notes?: string;
 }
 
+export interface Transaction {
+  id: string;
+  amount: number;
+  date: string;
+  note?: string;
+}
+
 export interface Budget {
   category: string; 
   subCategory?: string;
@@ -49,6 +56,7 @@ export interface Budget {
   carryOver: number;
   notes?: string;
   color?: string; // 增加自定义颜色支持
+  transactions?: Transaction[]; // 增加流水明细
 }
 
 export interface AIInsight {

@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { AssetCategory } from './types';
 
@@ -6,6 +5,16 @@ export const Icons = {
   Plus: ({ className = "w-6 h-6" }: { className?: string }) => (
     <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M12 5v14M5 12h14" />
+    </svg>
+  ),
+  List: ({ className = "w-6 h-6" }: { className?: string }) => (
+    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="8" y1="6" x2="21" y2="6" />
+      <line x1="8" y1="12" x2="21" y2="12" />
+      <line x1="8" y1="18" x2="21" y2="18" />
+      <line x1="3" y1="6" x2="3.01" y2="6" />
+      <line x1="3" y1="12" x2="3.01" y2="12" />
+      <line x1="3" y1="18" x2="3.01" y2="18" />
     </svg>
   ),
   Cog: ({ className = "w-6 h-6" }: { className?: string }) => (

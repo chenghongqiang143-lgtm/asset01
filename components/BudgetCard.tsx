@@ -9,9 +9,10 @@ interface BudgetCardProps {
   onUpdate: (index: number, updates: Partial<Budget>) => void;
   onEditFull: (index: number) => void;
   onQuickAdd: (index: number) => void;
+  onViewTransactions: (index: number) => void;
 }
 
-const BudgetCard: React.FC<BudgetCardProps> = memo(({ budget, index, themeColor, onUpdate, onEditFull, onQuickAdd }) => {
+const BudgetCard: React.FC<BudgetCardProps> = memo(({ budget, index, themeColor, onUpdate, onEditFull, onQuickAdd, onViewTransactions }) => {
   const [isEditingValue, setIsEditingValue] = useState(false);
   const [tempValue, setTempValue] = useState(budget.spentThisMonth.toString());
   const pressTimer = useRef<number | null>(null);
@@ -62,19 +63,27 @@ const BudgetCard: React.FC<BudgetCardProps> = memo(({ budget, index, themeColor,
         style={{ width: `${progress}%`, backgroundColor: isOver ? undefined : itemColor }} 
       />
       
-      {/* 移除背景右下角的图标 */}
-
       <div className="relative z-10 flex justify-between items-start mb-2">
         <div className="min-w-0 pr-2 pt-1">
           <h3 className="text-[17px] font-black text-slate-800 truncate tracking-tight leading-tight group-hover:text-slate-900 transition-colors">{budget.subCategory || '未命名项目'}</h3>
         </div>
-        <button 
-          onClick={(e) => { e.stopPropagation(); onQuickAdd(index); }} 
-          style={{ backgroundColor: itemColor }} 
-          className="p-2 text-white rounded shadow-md hover:shadow-lg hover:brightness-110 active:scale-90 transition-all flex-shrink-0 opacity-0 group-hover:opacity-100 translate-x-2 group-hover:translate-x-0"
-        >
-          <Icons.Plus className="w-3.5 h-3.5" />
-        </button>
+        <div className="flex gap-1 flex-shrink-0">
+          <button 
+            onClick={(e) => { e.stopPropagation(); onViewTransactions(index); }} 
+            className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded transition-all active:scale-90"
+            title="查看流水"
+          >
+            <Icons.List className="w-3.5 h-3.5" />
+          </button>
+          <button 
+            onClick={(e) => { e.stopPropagation(); onQuickAdd(index); }} 
+            style={{ backgroundColor: itemColor }} 
+            className="p-2 text-white rounded shadow-md hover:shadow-lg hover:brightness-110 active:scale-90 transition-all"
+            title="快速记账"
+          >
+            <Icons.Plus className="w-3.5 h-3.5" />
+          </button>
+        </div>
       </div>
 
       <div className="relative z-10 flex justify-between items-end">
