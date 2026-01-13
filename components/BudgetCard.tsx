@@ -63,9 +63,12 @@ const BudgetCard: React.FC<BudgetCardProps> = memo(({ budget, index, themeColor,
         style={{ width: `${progress}%`, backgroundColor: isOver ? undefined : itemColor }} 
       />
       
-      <div className={`relative z-10 flex justify-between items-start ${isSmallMode ? 'mb-1' : 'mb-1.5'}`}>
+      <div className={`relative z-10 flex justify-between items-start ${isSmallMode ? 'mb-0' : 'mb-1'}`}>
         <div className="min-w-0 pr-2">
-          <h3 className={`${isSmallMode ? 'text-sm' : 'text-[16px]'} font-black text-slate-800 truncate tracking-tight leading-tight group-hover:text-slate-900 transition-colors`}>{budget.subCategory || '未命名项目'}</h3>
+          <h3 className={`${isSmallMode ? 'text-[12px]' : 'text-[16px]'} font-black text-slate-800 truncate tracking-tight leading-tight group-hover:text-slate-900 transition-colors`}>{budget.subCategory || '未命名项目'}</h3>
+          {!isSmallMode && budget.notes && (
+            <p className="text-[10px] text-slate-400 font-bold truncate max-w-[150px] mt-0.5">{budget.notes}</p>
+          )}
         </div>
         <div className="flex gap-1 flex-shrink-0">
           {!isSmallMode && (
@@ -93,7 +96,7 @@ const BudgetCard: React.FC<BudgetCardProps> = memo(({ budget, index, themeColor,
               onChange={(e) => setTempValue(e.target.value)} 
               onBlur={handleSaveValue} 
               onKeyDown={(e) => e.key === 'Enter' && handleSaveValue()} 
-              className={`${isSmallMode ? 'text-lg' : 'text-xl'} font-mono font-black text-slate-900 border-none outline-none bg-slate-100/50 rounded px-1 w-32 shadow-inner`} 
+              className={`${isSmallMode ? 'text-[15px]' : 'text-xl'} font-mono font-black text-slate-900 border-none outline-none bg-slate-100/50 rounded px-1 w-32 shadow-inner`} 
               onClick={(e) => e.stopPropagation()} 
             />
           ) : (
@@ -101,15 +104,15 @@ const BudgetCard: React.FC<BudgetCardProps> = memo(({ budget, index, themeColor,
               onClick={(e) => { e.stopPropagation(); setIsEditingValue(true); setTempValue(budget.spentThisMonth.toString()); }}
               className="cursor-text hover:bg-slate-50 px-0.5 -ml-0.5 rounded transition-colors inline-block"
             >
-              <p className={`${isSmallMode ? 'text-lg' : 'text-[20px]'} font-mono font-black text-slate-800 tracking-tight leading-none`}>¥{budget.spentThisMonth.toLocaleString()}</p>
+              <p className={`${isSmallMode ? 'text-[16px]' : 'text-[20px]'} font-mono font-black text-slate-800 tracking-tight leading-none`}>¥{budget.spentThisMonth.toLocaleString()}</p>
             </div>
           )}
         </div>
         <div className="text-right flex flex-col items-end gap-1">
-          <span style={{ backgroundColor: isOver ? '#ef444415' : `${itemColor}15`, color: isOver ? '#ef4444' : itemColor }} className="text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-[2px] border border-transparent">
+          <span style={{ backgroundColor: isOver ? '#ef444415' : `${itemColor}15`, color: isOver ? '#ef4444' : itemColor }} className="text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-[2px] border border-transparent">
              {budget.category}
           </span>
-          <div className={`text-[10px] font-black ${isOver ? 'text-rose-500' : 'text-slate-300'} font-mono leading-none`}>{progress.toFixed(0)}%</div>
+          <div className={`text-[9px] font-black ${isOver ? 'text-rose-500' : 'text-slate-300'} font-mono leading-none`}>{progress.toFixed(0)}%</div>
         </div>
       </div>
     </div>
