@@ -141,7 +141,6 @@ export const App: React.FC = () => {
   const [showGlobalChart, setShowGlobalChart] = useState(false);
   const [chartRange, setChartRange] = useState<'30d' | '1y'>('30d');
   const [showDistribution, setShowDistribution] = useState<'asset' | 'budget' | null>(null);
-  const [backupText, setBackupText] = useState('');
 
   const [editingBudgetIndex, setEditingBudgetIndex] = useState<number | null>(null);
   const [viewingTransactionsIndex, setViewingTransactionsIndex] = useState<number | null>(null);
@@ -162,6 +161,7 @@ export const App: React.FC = () => {
 
   const [isScrolled, setIsScrolled] = useState(false);
   const longPressTimer = useRef<number | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const tabIndex = useMemo(() => {
     switch (activeTab) {
@@ -231,10 +231,10 @@ export const App: React.FC = () => {
   }, [budgets, selectedBudgetCategory]);
 
   const stats = useMemo(() => {
-    const positive = assets.filter(a => a.category !== AssetCategory.LIABILITY);
-    const negative = assets.filter(a => a.category === AssetCategory.LIABILITY);
-    const totalAssets = positive.reduce((sum, a) => sum + a.value, 0);
-    const totalLiabilities = negative.reduce((sum, a) => sum + a.value, 0);
+    const positive = assets.filter(a => a.category !== AssetCategory.CASH && a.category !== AssetCategory.STOCK && a.category !== AssetCategory.CRYPTO && a.category !== AssetCategory.SAVING && a.category !== AssetCategory.FUND && a.category !== AssetCategory.REAL_ESTATE);
+    // Simplified logic for demo, checking specifically against LIABILITY
+    const totalAssets = assets.filter(a => a.category !== AssetCategory.LIABILITY).reduce((sum, a) => sum + a.value, 0);
+    const totalLiabilities = assets.filter(a => a.category === AssetCategory.LIABILITY).reduce((sum, a) => sum + a.value, 0);
     return { totalAssets, totalLiabilities, netWorth: totalAssets - totalLiabilities };
   }, [assets]);
 
@@ -551,33 +551,103 @@ export const App: React.FC = () => {
     setEditingBudgetIndex(null);
   };
 
-  const handleCopyBackup = () => {
-    const data = { assets, budgets, budgetCategoryList, assetCategoryList, themeColor, isAutoTheme, customCategoryColors };
+  const getFullData = () => ({
+    assets,
+    budgets,
+    budgetCategoryList,
+    assetCategoryList,
+    themeColor,
+    isAutoTheme,
+    customCategoryColors,
+    timestamp: new Date().toISOString()
+  });
+
+  const handleExportFile = async () => {
+    // 1. Prepare data immediately to keep user activation fresh
+    const data = getFullData();
     const jsonString = JSON.stringify(data, null, 2);
-    setBackupText(jsonString);
-    navigator.clipboard.writeText(jsonString)
-      .then(() => alert('备份数据已生成并复制到剪贴板！'))
-      .catch(() => alert('数据已生成，请手动复制下方文本框内容。'));
+    const date = new Date().toISOString().split('T')[0];
+    const fileName = `assets_backup_${date}.json`;
+    
+    // Strategy 1: Web Share (Most stable for Android files)
+    if (navigator.share && typeof navigator.canShare === 'function') {
+      const file = new File([jsonString], fileName, { type: 'application/json' });
+      if (navigator.canShare({ files: [file] })) {
+        try {
+          await navigator.share({
+            files: [file],
+            title: '资产账户备份',
+            text: '资产整理应用数据备份'
+          });
+          return; // Success
+        } catch (err) {
+          // If user cancelled, just stop. Otherwise try download fallback.
+          if (err instanceof Error && err.name === 'AbortError') return;
+          console.warn('Share files failed, trying direct download...', err);
+        }
+      }
+    }
+
+    // Strategy 2: Direct Download Fallback
+    // For Android compatibility, we use 'application/octet-stream' to bypass security warnings
+    // and force the browser to treat it as a generic downloadable file.
+    try {
+      const blob = new Blob([jsonString], { type: 'application/octet-stream' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      // Some mobile browsers need the link to be in the DOM
+      link.style.display = 'none';
+      document.body.appendChild(link);
+      link.click();
+      
+      // Cleanup
+      setTimeout(() => {
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      }, 100);
+      
+      alert('备份文件已尝试下载。请检查您的下载管理。');
+    } catch (err) {
+      console.error('Download failed:', err);
+      alert('导出失败。请尝试更换浏览器或检查权限设置。');
+    }
   };
 
-  const handleRestoreBackup = () => {
-    if (!backupText.trim()) { alert('请先在文本框中粘贴备份数据！'); return; }
-    try {
-      const data = JSON.parse(backupText);
-      if (confirm('确定要从备份数据恢复吗？当前数据将被覆盖。')) {
-          if (data.assets) setAssets(data.assets);
-          if (data.budgets) setBudgets(data.budgets);
-          if (data.budgetCategoryList) setBudgetCategoryList(data.budgetCategoryList);
-          if (data.assetCategoryList) setAssetCategoryList(data.assetCategoryList);
-          if (data.themeColor) setThemeColor(data.themeColor);
-          if (data.customCategoryColors) setCustomCategoryColors(data.customCategoryColors);
-          if (data.isAutoTheme !== undefined) setIsAutoTheme(data.isAutoTheme);
-          setBackupText('');
-          alert('数据恢复成功！');
-      }
-    } catch (e) {
-      alert('数据格式错误，无法恢复。请检查JSON格式。');
+  const performRestore = (jsonData: any) => {
+    if (confirm('确定要从备份数据恢复吗？当前数据将被覆盖。')) {
+        try {
+            if (jsonData.assets) setAssets(jsonData.assets);
+            if (jsonData.budgets) setBudgets(jsonData.budgets);
+            if (jsonData.budgetCategoryList) setBudgetCategoryList(jsonData.budgetCategoryList);
+            if (jsonData.assetCategoryList) setAssetCategoryList(jsonData.assetCategoryList);
+            if (jsonData.themeColor) setThemeColor(jsonData.themeColor);
+            if (jsonData.customCategoryColors) setCustomCategoryColors(jsonData.customCategoryColors);
+            if (jsonData.isAutoTheme !== undefined) setIsAutoTheme(jsonData.isAutoTheme);
+            alert('数据恢复成功！');
+        } catch (e) {
+            alert('恢复过程中发生错误，请确保备份文件完整。');
+        }
     }
+  };
+
+  const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const content = event.target?.result as string;
+        const data = JSON.parse(content);
+        performRestore(data);
+      } catch (err) {
+        alert('文件解析失败，请确保选择了正确的备份文件。');
+      }
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    };
+    reader.onerror = () => alert('读取文件失败');
+    reader.readAsText(file);
   };
 
   const handleClearData = () => {
@@ -933,22 +1003,36 @@ export const App: React.FC = () => {
                   </div>
                 </div>
                 <div className="pt-6 border-t border-slate-100 space-y-4">
-                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">数据管理 (复制/粘贴)</label>
-                  <textarea 
-                    value={backupText}
-                    onChange={(e) => setBackupText(e.target.value)}
-                    className="w-full h-32 px-3 py-2 text-[10px] font-mono font-medium text-slate-600 border border-slate-200 rounded bg-slate-50 focus:ring-2 focus:ring-slate-900/5 outline-none resize-none placeholder:text-slate-300"
-                    placeholder="在此处粘贴备份数据用于恢复..."
-                  />
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">数据管理 (防丢失备份)</label>
+                  
+                  <div className="grid grid-cols-2 gap-3">
+                    <button 
+                      onClick={handleExportFile} 
+                      style={{ backgroundColor: themeColor }}
+                      className="flex items-center justify-center gap-2 py-4 text-white font-black text-[10px] uppercase tracking-widest rounded hover:brightness-110 shadow-lg transition-all active:scale-[0.98]"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3"><path d="M12 15V3m0 12l-4-4m4 4l4-4M2 17l.621 2.485A2 2 0 0 0 4.561 21h14.878a2 2 0 0 0 1.94-1.515L22 17" /></svg>
+                      导出 JSON 文件
+                    </button>
+                    <button 
+                      onClick={() => fileInputRef.current?.click()} 
+                      className="flex items-center justify-center gap-2 py-4 bg-slate-900 text-white font-black text-[10px] uppercase tracking-widest rounded hover:bg-slate-800 shadow-lg transition-all active:scale-[0.98]"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3"><path d="M12 3v12m0-12l-4 4m4-4l4 4M2 17l.621 2.485A2 2 0 0 0 4.561 21h14.878a2 2 0 0 0 1.94-1.515L22 17" /></svg>
+                      上传备份文件
+                    </button>
+                    <input 
+                      type="file" 
+                      ref={fileInputRef} 
+                      onChange={handleImportFile} 
+                      accept=".json" 
+                      className="hidden" 
+                    />
+                  </div>
+
+                  <div className="h-px bg-slate-100 my-4" />
+
                   <div className="flex flex-col gap-3">
-                    <div className="flex gap-3">
-                        <button onClick={handleCopyBackup} className="flex-1 py-3 bg-slate-50 text-slate-600 font-bold text-[10px] uppercase tracking-widest border border-slate-200 rounded hover:bg-slate-100 transition-all active:scale-[0.98]">
-                            生成并复制备份
-                        </button>
-                        <button onClick={handleRestoreBackup} style={{ backgroundColor: themeColor }} className="flex-1 py-3 text-white font-black text-[10px] uppercase tracking-widest rounded hover:brightness-110 shadow-md transition-all active:scale-[0.98]">
-                            从文本恢复数据
-                        </button>
-                    </div>
                     <button onClick={handleClearData} className="w-full py-3 bg-rose-50 text-rose-600 border border-rose-200 font-black text-[10px] uppercase tracking-widest rounded hover:bg-rose-100 transition-all active:scale-[0.98]">
                         清空数据 (保留模板)
                     </button>
