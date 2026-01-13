@@ -10,9 +10,10 @@ interface AssetCardProps {
   onShowChart: (asset: Asset) => void;
   onEditFull: (asset: Asset) => void;
   onVisible?: (id: string, color: string) => void;
+  isSmallMode?: boolean;
 }
 
-const AssetCard: React.FC<AssetCardProps> = memo(({ asset, categoryColor, onDelete, onUpdate, onShowChart, onEditFull, onVisible }) => {
+const AssetCard: React.FC<AssetCardProps> = memo(({ asset, categoryColor, onDelete, onUpdate, onShowChart, onEditFull, onVisible, isSmallMode }) => {
   const [isEditingValue, setIsEditingValue] = useState(false);
   const [tempValue, setTempValue] = useState(asset.value.toString());
   const cardRef = useRef<HTMLDivElement>(null);
@@ -66,13 +67,10 @@ const AssetCard: React.FC<AssetCardProps> = memo(({ asset, categoryColor, onDele
       onTouchStart={handleMouseDown}
       onTouchEnd={handleMouseUp}
       style={{ 
-        // 使用多重渐变模拟光源：左上角亮光(Radial)，整体线性渐变(Linear)
-        // 调整了透明度 (D9=85%, BF=75%) 使色调变淡
         background: `
           radial-gradient(circle at 0% 0%, rgba(255,255,255,0.35) 0%, transparent 45%),
           linear-gradient(135deg, ${baseColor}D9, ${baseColor}BF)
         `,
-        // 增加更细腻的彩色阴影，同时也降低了阴影的不透明度
         boxShadow: `
           0 10px 20px -5px ${baseColor}40,
           0 4px 6px -2px ${baseColor}20,
@@ -80,16 +78,11 @@ const AssetCard: React.FC<AssetCardProps> = memo(({ asset, categoryColor, onDele
           inset 0 -1px 0 0 rgba(0,0,0,0.05)
         `,
       }}
-      className="relative rounded px-5 py-4 transition-all duration-300 group overflow-hidden active:scale-[0.98] h-[130px] flex flex-col justify-between hover:-translate-y-1"
+      className={`relative rounded transition-all duration-300 group overflow-hidden active:scale-[0.98] flex flex-col justify-between hover:-translate-y-1 ${isSmallMode ? 'h-[88px] px-3 py-3' : 'h-[130px] px-5 py-4'}`}
     >
-      {/* 噪点层 - 增加物理质感 */}
+      {/* 噪点层 */}
       <div className="bg-noise" />
       
-      {/* 装饰背景圆点 */}
-      <div className="absolute inset-0 opacity-[0.05] pointer-events-none z-0" style={{ backgroundImage: 'radial-gradient(circle, #fff 1.5px, transparent 1.5px)', backgroundSize: '16px 16px' }} />
-      
-      {/* 移除背景右下角的图标 */}
-
       {/* 进度条背景 */}
       {hasProgress && (
         <div className="absolute top-0 left-0 h-full transition-all duration-1000 z-0 bg-gradient-to-r from-white/0 via-white/5 to-white/20 mix-blend-overlay" style={{ width: `${progressPercent}%` }} />
@@ -100,30 +93,32 @@ const AssetCard: React.FC<AssetCardProps> = memo(({ asset, categoryColor, onDele
       )}
 
       {/* 顶部信息栏 */}
-      <div className="relative z-10 flex justify-between items-start mb-2">
-        <div className="min-w-0 pr-2 pt-1">
-          <h3 className="text-[17px] font-black text-white truncate drop-shadow-md leading-tight tracking-tight">{asset.name}</h3>
+      <div className={`relative z-10 flex justify-between items-start ${isSmallMode ? 'mb-1' : 'mb-2'}`}>
+        <div className="min-w-0 pr-2">
+          <h3 className={`${isSmallMode ? 'text-sm' : 'text-[17px]'} font-black text-white truncate drop-shadow-md leading-tight tracking-tight`}>{asset.name}</h3>
         </div>
-        <div className="flex gap-1">
-          <button onClick={(e) => { e.stopPropagation(); onShowChart(asset); }} className="p-1.5 bg-white/10 hover:bg-white/25 text-white rounded opacity-70 hover:opacity-100 transition-all duration-200 border border-white/10 shadow-sm backdrop-blur-sm">
-            <Icons.Chart className="w-3.5 h-3.5" />
-          </button>
-        </div>
+        {!isSmallMode && (
+          <div className="flex gap-1">
+            <button onClick={(e) => { e.stopPropagation(); onShowChart(asset); }} className="p-1.5 bg-white/10 hover:bg-white/25 text-white rounded opacity-70 hover:opacity-100 transition-all duration-200 border border-white/10 shadow-sm backdrop-blur-sm">
+              <Icons.Chart className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
       </div>
       
       {/* 底部数据栏 */}
       <div className="relative z-10 flex justify-between items-end">
         <div className="min-w-0">
           {isEditingValue ? (
-            <input autoFocus type="number" value={tempValue} onChange={(e) => setTempValue(e.target.value)} onBlur={handleSaveValue} onKeyDown={(e) => e.key === 'Enter' && handleSaveValue()} className="text-xl font-mono font-black text-white bg-black/20 border-none outline-none rounded px-1.5 w-32 shadow-inner" onClick={(e) => e.stopPropagation()} />
+            <input autoFocus type="number" value={tempValue} onChange={(e) => setTempValue(e.target.value)} onBlur={handleSaveValue} onKeyDown={(e) => e.key === 'Enter' && handleSaveValue()} className={`${isSmallMode ? 'text-lg' : 'text-xl'} font-mono font-black text-white bg-black/20 border-none outline-none rounded px-1.5 w-32 shadow-inner`} onClick={(e) => e.stopPropagation()} />
           ) : (
             <div onClick={(e) => { e.stopPropagation(); setIsEditingValue(true); setTempValue(asset.value.toString()); }} className="cursor-text group/val inline-block">
-              <span className="text-[22px] font-mono font-black text-white drop-shadow-md tracking-tight leading-none group-hover/val:underline decoration-white/30 underline-offset-4 decoration-2">
+              <span className={`${isSmallMode ? 'text-lg' : 'text-[22px]'} font-mono font-black text-white drop-shadow-md tracking-tight leading-none group-hover/val:underline decoration-white/30 underline-offset-4 decoration-2`}>
                 {new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY', maximumFractionDigits: 0 }).format(asset.value)}
               </span>
             </div>
           )}
-          {hasProgress && (
+          {hasProgress && !isSmallMode && (
             <div className="flex items-center gap-1 mt-1">
                <div className="h-1 w-1 bg-white/60 rounded-full animate-pulse"></div>
                <p className="text-[10px] font-bold text-white/80 uppercase tracking-wide">{progressPercent.toFixed(0)}% / {new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY', maximumFractionDigits: 0 }).format(asset.targetValue || 0)}</p>
@@ -141,7 +136,7 @@ const AssetCard: React.FC<AssetCardProps> = memo(({ asset, categoryColor, onDele
               </span>
             )}
           </div>
-          {asset.notes && <div className="text-[9px] text-white/80 font-bold max-w-[120px] truncate leading-none drop-shadow-sm bg-black/10 px-1.5 py-0.5 rounded inline-block backdrop-blur-sm border border-white/5">{asset.notes}</div>}
+          {asset.notes && !isSmallMode && <div className="text-[9px] text-white/80 font-bold max-w-[120px] truncate leading-none drop-shadow-sm bg-black/10 px-1.5 py-0.5 rounded inline-block backdrop-blur-sm border border-white/5">{asset.notes}</div>}
           <div className="text-[9px] text-white/50 font-mono font-black uppercase whitespace-nowrap leading-none tracking-wider">{asset.lastUpdated}</div>
         </div>
       </div>

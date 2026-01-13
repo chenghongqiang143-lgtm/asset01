@@ -140,6 +140,8 @@ export const App: React.FC = () => {
   const [activeHeaderColor, setActiveHeaderColor] = useState<string>('#ffffff');
   const [isAutoTheme, setIsAutoTheme] = useState(() => localStorage.getItem('auto_theme') === 'true');
   const [themeColor, setThemeColor] = useState(() => localStorage.getItem('app_theme') || '#ef4444');
+  const [isSmallCardMode, setIsSmallCardMode] = useState(() => localStorage.getItem('small_card_mode') === 'true');
+
   const [viewingAssetChart, setViewingAssetChart] = useState<Asset | null>(null);
   const [showGlobalChart, setShowGlobalChart] = useState(false);
   const [chartRange, setChartRange] = useState<'30d' | '1y'>('30d');
@@ -224,7 +226,8 @@ export const App: React.FC = () => {
   useEffect(() => {
     localStorage.setItem('app_theme', themeColor);
     localStorage.setItem('auto_theme', isAutoTheme.toString());
-  }, [themeColor, isAutoTheme]);
+    localStorage.setItem('small_card_mode', isSmallCardMode.toString());
+  }, [themeColor, isAutoTheme, isSmallCardMode]);
 
   const filteredAssets = useMemo(() => {
     if (selectedAssetCategory === '全部') return assets;
@@ -238,7 +241,7 @@ export const App: React.FC = () => {
   }, [budgets, selectedBudgetCategory]);
 
   const stats = useMemo(() => {
-    const positive = assets.filter(a => a.category !== AssetCategory.LIABILITY);
+    const positive = assets.filter(a => a.category !== AssetCategory.CASH);
     const negative = assets.filter(a => a.category === AssetCategory.LIABILITY);
     const totalAssets = positive.reduce((sum, a) => sum + a.value, 0);
     const totalLiabilities = negative.reduce((sum, a) => sum + a.value, 0);
@@ -744,11 +747,54 @@ export const App: React.FC = () => {
                     <Icons.Plus className="w-4 h-4" /> <span>新增账户</span>
                   </button>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {filteredAssets.map(asset => (
-                    <AssetCard key={asset.id} asset={asset} categoryColor={customCategoryColors[asset.category]} onDelete={(id) => setAssets(prev => prev.filter(a => a.id !== id))} onUpdate={handleUpdateAsset} onShowChart={setViewingAssetChart} onEditFull={setEditingAsset} onVisible={onAssetVisible} />
-                  ))}
-                </div>
+                
+                {selectedAssetCategory === '全部' ? (
+                  <div className="space-y-8 animate-in fade-in duration-500">
+                    {assetCategoryList.map(cat => {
+                      const items = assets.filter(a => a.category === cat);
+                      if (items.length === 0) return null;
+                      
+                      // Calculate category aggregate change
+                      let currentSum = 0;
+                      let prevSum = 0;
+                      items.forEach(asset => {
+                        currentSum += asset.value;
+                        const change = asset.change24h || 0;
+                        prevSum += asset.value / (1 + change / 100);
+                      });
+                      const catChange = prevSum !== 0 ? ((currentSum / prevSum) - 1) * 100 : 0;
+                      const isCatPos = catChange >= 0;
+
+                      return (
+                        <div key={cat} className="space-y-4">
+                          <div className="flex items-center gap-3">
+                            <div className="h-4 w-1.5 rounded-full" style={{ backgroundColor: customCategoryColors[cat] || themeColor }} />
+                            <div className="flex items-baseline gap-2">
+                              <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">{cat}</h3>
+                              {Math.abs(catChange) > 0.01 && (
+                                <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-sm ${isCatPos ? 'text-emerald-500 bg-emerald-50' : 'text-rose-500 bg-rose-50'}`}>
+                                  {isCatPos ? '+' : ''}{catChange.toFixed(1)}%
+                                </span>
+                              )}
+                            </div>
+                            <div className="h-px flex-1 bg-slate-100"></div>
+                          </div>
+                          <div className={`grid ${isSmallCardMode ? 'grid-cols-2 gap-3' : 'grid-cols-1 md:grid-cols-2 gap-4'}`}>
+                            {items.map(asset => (
+                              <AssetCard key={asset.id} asset={asset} categoryColor={customCategoryColors[asset.category]} onDelete={(id) => setAssets(prev => prev.filter(a => a.id !== id))} onUpdate={handleUpdateAsset} onShowChart={setViewingAssetChart} onEditFull={setEditingAsset} onVisible={onAssetVisible} isSmallMode={isSmallCardMode} />
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className={`grid ${isSmallCardMode ? 'grid-cols-2 gap-3' : 'grid-cols-1 md:grid-cols-2 gap-4'} animate-in fade-in duration-500`}>
+                    {filteredAssets.map(asset => (
+                      <AssetCard key={asset.id} asset={asset} categoryColor={customCategoryColors[asset.category]} onDelete={(id) => setAssets(prev => prev.filter(a => a.id !== id))} onUpdate={handleUpdateAsset} onShowChart={setViewingAssetChart} onEditFull={setEditingAsset} onVisible={onAssetVisible} isSmallMode={isSmallCardMode} />
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -824,23 +870,61 @@ export const App: React.FC = () => {
                     <Icons.Plus className="w-4 h-4" /> <span>新增预算</span>
                   </button>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {filteredBudgets.map((b) => {
-                    const realIndex = budgets.indexOf(b);
-                    return (
-                      <BudgetCard 
-                        key={realIndex} 
-                        budget={b} 
-                        index={realIndex} 
-                        themeColor={customCategoryColors[b.category] || themeColor} 
-                        onUpdate={handleUpdateBudget} 
-                        onEditFull={setEditingBudgetIndex} 
-                        onQuickAdd={setQuickAddIndex} 
-                        onViewTransactions={setViewingTransactionsIndex}
-                      />
-                    );
-                  })}
-                </div>
+                
+                {selectedBudgetCategory === '全部' ? (
+                  <div className="space-y-8 animate-in fade-in duration-500">
+                    {budgetCategoryList.map(cat => {
+                      const items = budgets.filter(b => b.category === cat);
+                      if (items.length === 0) return null;
+                      return (
+                        <div key={cat} className="space-y-4">
+                          <div className="flex items-center gap-3">
+                            <div className="h-4 w-1.5 rounded-full" style={{ backgroundColor: customCategoryColors[cat] || themeColor }} />
+                            <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">{cat}</h3>
+                            <div className="h-px flex-1 bg-slate-100"></div>
+                          </div>
+                          <div className={`grid ${isSmallCardMode ? 'grid-cols-2 gap-3' : 'grid-cols-1 md:grid-cols-2 gap-4'}`}>
+                            {items.map((b) => {
+                              const realIndex = budgets.indexOf(b);
+                              return (
+                                <BudgetCard 
+                                  key={realIndex} 
+                                  budget={b} 
+                                  index={realIndex} 
+                                  themeColor={customCategoryColors[b.category] || themeColor} 
+                                  onUpdate={handleUpdateBudget} 
+                                  onEditFull={setEditingBudgetIndex} 
+                                  onQuickAdd={setQuickAddIndex} 
+                                  onViewTransactions={setViewingTransactionsIndex}
+                                  isSmallMode={isSmallCardMode}
+                                />
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className={`grid ${isSmallCardMode ? 'grid-cols-2 gap-3' : 'grid-cols-1 md:grid-cols-2 gap-4'} animate-in fade-in duration-500`}>
+                    {filteredBudgets.map((b) => {
+                      const realIndex = budgets.indexOf(b);
+                      return (
+                        <BudgetCard 
+                          key={realIndex} 
+                          budget={b} 
+                          index={realIndex} 
+                          themeColor={customCategoryColors[b.category] || themeColor} 
+                          onUpdate={handleUpdateBudget} 
+                          onEditFull={setEditingBudgetIndex} 
+                          onQuickAdd={setQuickAddIndex} 
+                          onViewTransactions={setViewingTransactionsIndex}
+                          isSmallMode={isSmallCardMode}
+                        />
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -858,6 +942,23 @@ export const App: React.FC = () => {
                     ))}
                   </div>
                 </section>
+                
+                <section className="pt-6 border-t border-slate-100">
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">显示偏好</label>
+                  <div className="flex items-center justify-between p-4 bg-slate-50 border border-slate-200 rounded">
+                    <div>
+                      <h4 className="text-xs font-black text-slate-700 uppercase tracking-wider">紧凑型小卡片模式</h4>
+                      <p className="text-[10px] font-bold text-slate-400 mt-0.5">缩小卡片尺寸，在屏幕中显示更多内容</p>
+                    </div>
+                    <button 
+                      onClick={() => setIsSmallCardMode(!isSmallCardMode)}
+                      className={`w-12 h-6 rounded-full transition-all duration-300 relative ${isSmallCardMode ? 'bg-slate-900' : 'bg-slate-200'}`}
+                    >
+                      <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all duration-300 ${isSmallCardMode ? 'left-7' : 'left-1'}`} />
+                    </button>
+                  </div>
+                </section>
+
                 <div className="grid grid-cols-1 gap-4 pt-6 border-t border-slate-100">
                   <div className="border border-slate-100 rounded overflow-hidden">
                     <button onClick={() => setIsAssetCatExpanded(!isAssetCatExpanded)} className="w-full flex items-center justify-between p-4 bg-slate-50 hover:bg-slate-100 transition-colors">
