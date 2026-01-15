@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { AssetCategory } from './types';
 
@@ -23,16 +24,16 @@ export const Icons = {
       <circle cx="12" cy="12" r="3" />
     </svg>
   ),
-  Chart: () => (
-    <svg viewBox="0 0 24 24" className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+  Chart: ({ className = "w-6 h-6" }: { className?: string }) => (
+    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M3 3v18h18" />
       <path d="M18 17V9" />
       <path d="M13 17V5" />
       <path d="M8 17v-3" />
     </svg>
   ),
-  Wallet: () => (
-    <svg viewBox="0 0 24 24" className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+  Wallet: ({ className = "w-6 h-6" }: { className?: string }) => (
+    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M21 12V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-3" />
       <path d="M21 12H17a2 2 0 0 0 0 4h4" />
     </svg>
