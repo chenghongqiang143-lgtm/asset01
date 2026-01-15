@@ -77,8 +77,9 @@ const AssetCard: React.FC<AssetCardProps> = memo(({ asset, categoryColor, onDele
           inset 0 1px 0 0 rgba(255,255,255,0.35),
           inset 0 -1px 0 0 rgba(0,0,0,0.05)
         `,
+        borderRadius: '4px'
       }}
-      className={`relative rounded transition-all duration-300 group overflow-hidden active:scale-[0.98] flex flex-col justify-between hover:-translate-y-1 ${isSmallMode ? 'h-[88px] px-3 py-3' : 'h-[130px] px-5 py-4'}`}
+      className={`relative transition-all duration-300 group overflow-hidden active:scale-[0.98] flex flex-col justify-between hover:-translate-y-1 ${isSmallMode ? 'h-[88px] px-3 py-3' : 'h-[130px] px-5 py-4'}`}
     >
       {/* 噪点层 */}
       <div className="bg-noise" />
@@ -93,27 +94,28 @@ const AssetCard: React.FC<AssetCardProps> = memo(({ asset, categoryColor, onDele
       )}
 
       {/* 顶部信息栏 */}
-      <div className={`relative z-10 flex justify-between items-start ${isSmallMode ? 'mb-1' : 'mb-2'}`}>
+      <div className={`relative z-10 flex justify-between items-start ${isSmallMode ? 'mb-0' : 'mb-2'}`}>
         <div className="min-w-0 pr-2">
-          <h3 className={`${isSmallMode ? 'text-sm' : 'text-[17px]'} font-black text-white truncate drop-shadow-md leading-tight tracking-tight`}>{asset.name}</h3>
+          <h3 className={`${isSmallMode ? 'text-[13px]' : 'text-[17px]'} font-black text-white truncate drop-shadow-md leading-tight tracking-tight`}>{asset.name}</h3>
         </div>
-        {!isSmallMode && (
-          <div className="flex gap-1">
-            <button onClick={(e) => { e.stopPropagation(); onShowChart(asset); }} className="p-1.5 bg-white/10 hover:bg-white/25 text-white rounded opacity-70 hover:opacity-100 transition-all duration-200 border border-white/10 shadow-sm backdrop-blur-sm">
-              <Icons.Chart className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        )}
+        <div className="flex gap-1">
+          <button 
+            onClick={(e) => { e.stopPropagation(); onShowChart(asset); }} 
+            className={`${isSmallMode ? 'p-1' : 'p-1.5'} bg-white/10 hover:bg-white/25 text-white rounded-[2px] opacity-70 hover:opacity-100 transition-all duration-200 border border-white/10 shadow-sm backdrop-blur-sm`}
+          >
+            <Icons.Chart className={isSmallMode ? 'w-3 h-3' : 'w-3.5 h-3.5'} />
+          </button>
+        </div>
       </div>
       
       {/* 底部数据栏 */}
       <div className="relative z-10 flex justify-between items-end">
         <div className="min-w-0">
           {isEditingValue ? (
-            <input autoFocus type="number" value={tempValue} onChange={(e) => setTempValue(e.target.value)} onBlur={handleSaveValue} onKeyDown={(e) => e.key === 'Enter' && handleSaveValue()} className={`${isSmallMode ? 'text-lg' : 'text-xl'} font-mono font-black text-white bg-black/20 border-none outline-none rounded px-1.5 w-32 shadow-inner`} onClick={(e) => e.stopPropagation()} />
+            <input autoFocus type="number" value={tempValue} onChange={(e) => setTempValue(e.target.value)} onBlur={handleSaveValue} onKeyDown={(e) => e.key === 'Enter' && handleSaveValue()} className={`${isSmallMode ? 'text-lg' : 'text-xl'} font-mono font-black text-white bg-black/20 border-none outline-none rounded-[2px] px-1.5 w-32 shadow-inner`} onClick={(e) => e.stopPropagation()} />
           ) : (
             <div onClick={(e) => { e.stopPropagation(); setIsEditingValue(true); setTempValue(asset.value.toString()); }} className="cursor-text group/val inline-block">
-              <span className={`${isSmallMode ? 'text-lg' : 'text-[22px]'} font-mono font-black text-white drop-shadow-md tracking-tight leading-none group-hover/val:underline decoration-white/30 underline-offset-4 decoration-2`}>
+              <span className={`${isSmallMode ? 'text-[17px]' : 'text-[22px]'} font-mono font-black text-white drop-shadow-md tracking-tight leading-none group-hover/val:underline decoration-white/30 underline-offset-4 decoration-2`}>
                 {new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY', maximumFractionDigits: 0 }).format(asset.value)}
               </span>
             </div>
@@ -127,17 +129,19 @@ const AssetCard: React.FC<AssetCardProps> = memo(({ asset, categoryColor, onDele
         </div>
         <div className="text-right flex flex-col items-end gap-1">
           <div className="flex items-center gap-1.5">
-            <span className="text-[9px] font-black text-white/80 uppercase tracking-widest bg-black/20 px-1.5 py-0.5 rounded backdrop-blur-sm shadow-sm border border-white/5">
-              {asset.category}
-            </span>
+            {!isSmallMode && (
+              <span className="text-[9px] font-black text-white/80 uppercase tracking-widest bg-black/20 px-1.5 py-0.5 rounded-[2px] backdrop-blur-sm shadow-sm border border-white/5">
+                {asset.category}
+              </span>
+            )}
             {asset.change24h !== undefined && !hasProgress && !isSmallMode && (
-              <span className={`text-[9px] font-bold px-1 py-0.5 rounded bg-black/10 backdrop-blur-sm ${isPositive ? 'text-emerald-200' : 'text-rose-200'}`}>
+              <span className={`text-[9px] font-bold px-1 py-0.5 rounded-[2px] bg-black/10 backdrop-blur-sm ${isPositive ? 'text-emerald-200' : 'text-rose-200'}`}>
                 {isPositive ? '↑' : '↓'}{Math.abs(asset.change24h)}%
               </span>
             )}
           </div>
-          {asset.notes && !isSmallMode && <div className="text-[9px] text-white/80 font-bold max-w-[120px] truncate leading-none drop-shadow-sm bg-black/10 px-1.5 py-0.5 rounded inline-block backdrop-blur-sm border border-white/5">{asset.notes}</div>}
-          <div className="text-[9px] text-white/50 font-mono font-black uppercase whitespace-nowrap leading-none tracking-wider">{asset.lastUpdated}</div>
+          {asset.notes && !isSmallMode && <div className="text-[9px] text-white/80 font-bold max-w-[120px] truncate leading-none drop-shadow-sm bg-black/10 px-1.5 py-0.5 rounded-[2px] inline-block backdrop-blur-sm border border-white/5">{asset.notes}</div>}
+          {!isSmallMode && <div className="text-[9px] text-white/50 font-mono font-black uppercase whitespace-nowrap leading-none tracking-wider">{asset.lastUpdated}</div>}
         </div>
       </div>
     </div>
