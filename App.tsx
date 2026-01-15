@@ -18,15 +18,20 @@ const generateMockHistory = (baseValue: number): HistoryPoint[] => {
   const history: HistoryPoint[] = [];
   const today = new Date();
   let currentValue = baseValue;
+  // Generate roughly 1 year of data, every 3 days to keep it efficient but detailed enough
   for (let i = 0; i < 120; i++) {
     const d = new Date(today);
     d.setDate(d.getDate() - (i * 3));
     const dateStr = d.toISOString().split('T')[0];
+    
+    // Add point
     history.push({
       date: dateStr,
       value: currentValue
     });
-    const change = (Math.random() - 0.5) * 0.05;
+
+    // Random walk backwards
+    const change = (Math.random() - 0.5) * 0.05; // +/- 2.5% variation
     currentValue = currentValue / (1 + change);
   }
   return history.reverse();
@@ -141,6 +146,7 @@ export const App: React.FC = () => {
   const [showGlobalChart, setShowGlobalChart] = useState(false);
   const [chartRange, setChartRange] = useState<'30d' | '1y'>('30d');
   const [showDistribution, setShowDistribution] = useState<'asset' | 'budget' | null>(null);
+  const [backupText, setBackupText] = useState('');
 
   const [editingBudgetIndex, setEditingBudgetIndex] = useState<number | null>(null);
   const [viewingTransactionsIndex, setViewingTransactionsIndex] = useState<number | null>(null);
@@ -149,6 +155,7 @@ export const App: React.FC = () => {
   const [quickAmount, setQuickAmount] = useState('');
   const [editingCategory, setEditingCategory] = useState<{name: string, type: 'asset' | 'budget'} | null>(null);
 
+  // New state for adding transaction inside transaction modal
   const [isAddingTransaction, setIsAddingTransaction] = useState(false);
   const [newTransactionAmount, setNewTransactionAmount] = useState('');
   const [newTransactionNote, setNewTransactionNote] = useState('');
@@ -159,9 +166,10 @@ export const App: React.FC = () => {
   const [isAssetCatExpanded, setIsAssetCatExpanded] = useState(false);
   const [isBudgetCatExpanded, setIsBudgetCatExpanded] = useState(false);
 
+  // New state for scroll collapsing
   const [isScrolled, setIsScrolled] = useState(false);
+
   const longPressTimer = useRef<number | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const tabIndex = useMemo(() => {
     switch (activeTab) {
@@ -199,11 +207,13 @@ export const App: React.FC = () => {
     }
   }, []);
 
+  // Scroll listener for collapsing effect
   useEffect(() => {
     const handleScroll = () => {
       const scrolled = window.scrollY > 20;
       setIsScrolled(scrolled);
     };
+
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
@@ -231,7 +241,7 @@ export const App: React.FC = () => {
   }, [budgets, selectedBudgetCategory]);
 
   const stats = useMemo(() => {
-    const positive = assets.filter(a => a.category !== AssetCategory.LIABILITY);
+    const positive = assets.filter(a => a.category !== AssetCategory.CASH);
     const negative = assets.filter(a => a.category === AssetCategory.LIABILITY);
     const totalAssets = positive.reduce((sum, a) => sum + a.value, 0);
     const totalLiabilities = negative.reduce((sum, a) => sum + a.value, 0);
@@ -263,22 +273,40 @@ export const App: React.FC = () => {
     return Object.entries(distribution).map(([name, value]) => ({ name, value }));
   }, [budgets]);
 
+  // Correct calculation of global history by aligning dates
   const globalHistory = useMemo(() => {
     if (assets.length === 0) return [];
+    
+    // 1. Collect all unique dates
     const allDates = new Set<string>();
     assets.forEach(a => a.history.forEach(h => allDates.add(h.date)));
+    
+    // 2. Sort dates chronologically
     const sortedDates = Array.from(allDates).sort((a, b) => parseDate(a) - parseDate(b));
+
+    // 3. Calculate total value for each date
     return sortedDates.map(date => {
       let total = 0;
       const targetTime = parseDate(date);
+
       assets.forEach(asset => {
+        // Find exact match or the closest previous record
+        // This ensures if an asset wasn't updated on this specific date, we use its last known value
+        // instead of 0 (which would cause a dip).
+        
         let val = 0;
         const exactMatch = asset.history.find(h => h.date === date);
+        
         if (exactMatch) {
             val = exactMatch.value;
         } else {
+            // Find the latest point that is before or equal to targetTime
             let closest = null;
+            // Assuming history is sorted, we can iterate or filter. 
+            // Since we generated history sorted, let's assume it is roughly sorted or scan it.
+            // A simple scan is safe for small datasets.
             let maxTime = -1;
+            
             for (const h of asset.history) {
                 const hTime = parseDate(h.date);
                 if (hTime <= targetTime && hTime > maxTime) {
@@ -288,6 +316,7 @@ export const App: React.FC = () => {
             }
             if (closest) val = closest.value;
         }
+
         if (asset.category === AssetCategory.LIABILITY) total -= val;
         else total += val;
       });
@@ -295,12 +324,15 @@ export const App: React.FC = () => {
     });
   }, [assets]);
 
+  // Filter history based on selected range
   const getChartData = (data: HistoryPoint[]) => {
       if (!data || data.length === 0) return [];
+      
       const now = new Date().getTime();
       const cutoff = chartRange === '30d' 
           ? now - (30 * 24 * 60 * 60 * 1000)
-          : new Date(new Date().getFullYear(), 0, 1).getTime();
+          : new Date(new Date().getFullYear(), 0, 1).getTime(); // Start of year
+
       return data.filter(point => parseDate(point.date) >= cutoff);
   };
 
@@ -308,6 +340,7 @@ export const App: React.FC = () => {
     setAssets(prev => prev.map(a => {
       if (a.id === id) {
         const newValue = updates.value !== undefined ? updates.value : a.value;
+        // Use standard YYYY-MM-DD for new entries to ensure sorting works best
         const todayStr = new Date().toISOString().split('T')[0];
         const newHistory = updates.value !== undefined 
           ? [...a.history, { date: todayStr, value: newValue }]
@@ -327,6 +360,7 @@ export const App: React.FC = () => {
     setBudgets(prev => {
       const newBudgets = [...prev];
       newBudgets[index] = { ...newBudgets[index], ...updates };
+      
       if (newBudgets[index].category !== '总计') {
         const categoriesOnly = newBudgets.filter(b => b.category !== '总计');
         const totalIdx = newBudgets.findIndex(b => b.category === '总计');
@@ -343,9 +377,11 @@ export const App: React.FC = () => {
   }, []);
 
   const handleAddNewBudget = () => {
+    // If a specific category is selected in the filter bar, use it. Otherwise, default to first available.
     const defaultCategory = selectedBudgetCategory !== '全部' && budgetCategoryList.includes(selectedBudgetCategory)
       ? selectedBudgetCategory
       : (budgetCategoryList[0] || '生活');
+
     const newBudget: Budget = {
       category: defaultCategory,
       subCategory: '新预算项目',
@@ -388,6 +424,64 @@ export const App: React.FC = () => {
       longPressTimer.current = null;
     }
   }, []);
+
+  const handleQuickAdd = () => {
+    if (quickAddIndex !== null) {
+      const amount = parseFloat(quickAmount);
+      if (!isNaN(amount)) {
+        // Create new transaction
+        const newTransaction: Transaction = {
+          id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+          amount: amount,
+          date: new Date().toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' }),
+          note: '快速记录'
+        };
+        
+        const currentBudget = budgets[quickAddIndex];
+        const updatedTransactions = [newTransaction, ...(currentBudget.transactions || [])];
+        
+        handleUpdateBudget(quickAddIndex, { 
+          spentThisMonth: currentBudget.spentThisMonth + amount,
+          transactions: updatedTransactions
+        });
+      }
+    }
+    setQuickAddIndex(null);
+    setQuickAmount('');
+  };
+
+  const handleManualAddTransaction = () => {
+    if (viewingTransactionsIndex === null) return;
+    const amount = parseFloat(newTransactionAmount);
+    if (!isNaN(amount) && amount !== 0) {
+      const newTransaction: Transaction = {
+        id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+        amount: amount,
+        date: new Date().toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' }),
+        note: newTransactionNote || '补录账单'
+      };
+      const currentBudget = budgets[viewingTransactionsIndex];
+      const updatedTransactions = [newTransaction, ...(currentBudget.transactions || [])];
+      
+      handleUpdateBudget(viewingTransactionsIndex, { 
+        spentThisMonth: currentBudget.spentThisMonth + amount,
+        transactions: updatedTransactions
+      });
+      setIsAddingTransaction(false);
+      setNewTransactionAmount('');
+      setNewTransactionNote('');
+    }
+  };
+
+  const handleDeleteTransaction = (budgetIndex: number, transactionId: string, amount: number) => {
+    const budget = budgets[budgetIndex];
+    const newTransactions = (budget.transactions || []).filter(t => t.id !== transactionId);
+    
+    handleUpdateBudget(budgetIndex, {
+      spentThisMonth: budget.spentThisMonth - amount,
+      transactions: newTransactions
+    });
+  };
 
   const onAssetVisible = useCallback((id: string, color: string) => {
     setActiveHeaderColor(color);
@@ -458,69 +552,76 @@ export const App: React.FC = () => {
     setCustomCategoryColors(prev => ({ ...prev, [name]: color }));
   };
 
-  const getFullData = () => ({
-    assets,
-    budgets,
-    budgetCategoryList,
-    assetCategoryList,
-    themeColor,
-    isAutoTheme,
-    customCategoryColors,
-    timestamp: new Date().toISOString()
-  });
-
-  // Updated handleExportFile to use Data URL
-  const handleExportFile = () => {
-    const data = getFullData();
-    const jsonString = JSON.stringify(data, null, 2);
-    const dateStr = new Date().toISOString().split('T')[0];
-    const fileName = `assets_backup_${dateStr}.txt`;
-
-    try {
-      // 解决中文 Base64 乱码的通用转换方案
-      const base64 = btoa(encodeURIComponent(jsonString).replace(/%([0-9A-F]{2})/g, (match, p1) => 
-        String.fromCharCode(parseInt(p1, 16))
-      ));
-      const dataUrl = `data:application/octet-stream;base64,${base64}`;
-      const a = document.createElement('a');
-      a.href = dataUrl;
-      a.download = fileName;
-      document.body.appendChild(a);
-      a.click();
-      setTimeout(() => document.body.removeChild(a), 300);
-    } catch (err) {
-      alert('导出失败');
-    }
+  const handleRenameCategory = () => {
+    if (!editingCategory) return;
+    handleRenameCategoryAction(editingCategory.name, editingCategory.type);
+    setEditingCategory(null);
   };
 
-  const performRestore = (jsonData: any) => {
-    if (confirm('确定要从备份数据恢复吗？当前数据将被覆盖。')) {
-        if (jsonData.assets) setAssets(jsonData.assets);
-        if (jsonData.budgets) setBudgets(jsonData.budgets);
-        if (jsonData.budgetCategoryList) setBudgetCategoryList(jsonData.budgetCategoryList);
-        if (jsonData.assetCategoryList) setAssetCategoryList(jsonData.assetCategoryList);
-        if (jsonData.themeColor) setThemeColor(jsonData.themeColor);
-        if (jsonData.customCategoryColors) setCustomCategoryColors(jsonData.customCategoryColors);
-        if (jsonData.isAutoTheme !== undefined) setIsAutoTheme(jsonData.isAutoTheme);
-        alert('数据恢复成功！');
-    }
-  };
-
-  const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const content = event.target?.result as string;
-        const data = JSON.parse(content);
-        performRestore(data);
-      } catch (err) {
-        alert('文件解析失败，请确保选择了正确的备份文件。');
+  const handleDeleteHistoryPoint = (assetId: string, index: number) => {
+    if (!confirm('确定要删除这条记录吗？')) return;
+    setAssets(prev => prev.map(a => {
+      if (a.id === assetId) {
+        const newHistory = [...a.history];
+        newHistory.splice(index, 1);
+        if (viewingAssetChart && viewingAssetChart.id === assetId) {
+          setViewingAssetChart({ ...a, history: newHistory });
+        }
+        return { ...a, history: newHistory };
       }
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    };
-    reader.readAsText(file);
+      return a;
+    }));
+  };
+
+  const handleDeleteBudget = () => {
+    if (editingBudgetIndex === null) return;
+    if (!confirm('确定要删除这个预算项目吗？')) return;
+
+    setBudgets(prev => {
+      const newBudgets = prev.filter((_, i) => i !== editingBudgetIndex);
+      
+      const categoriesOnly = newBudgets.filter(b => b.category !== '总计');
+      const totalIdx = newBudgets.findIndex(b => b.category === '总计');
+      
+      if (totalIdx !== -1) {
+        newBudgets[totalIdx] = {
+          ...newBudgets[totalIdx],
+          monthlyAmount: categoriesOnly.reduce((sum, b) => sum + b.monthlyAmount, 0),
+          spentThisMonth: categoriesOnly.reduce((sum, b) => sum + b.spentThisMonth, 0)
+        };
+      }
+      return newBudgets;
+    });
+    setEditingBudgetIndex(null);
+  };
+
+  const handleCopyBackup = () => {
+    const data = { assets, budgets, budgetCategoryList, assetCategoryList, themeColor, isAutoTheme, customCategoryColors };
+    const jsonString = JSON.stringify(data, null, 2);
+    setBackupText(jsonString);
+    navigator.clipboard.writeText(jsonString)
+      .then(() => alert('备份数据已生成并复制到剪贴板！'))
+      .catch(() => alert('数据已生成，请手动复制下方文本框内容。'));
+  };
+
+  const handleRestoreBackup = () => {
+    if (!backupText.trim()) { alert('请先在文本框中粘贴备份数据！'); return; }
+    try {
+      const data = JSON.parse(backupText);
+      if (confirm('确定要从备份数据恢复吗？当前数据将被覆盖。')) {
+          if (data.assets) setAssets(data.assets);
+          if (data.budgets) setBudgets(data.budgets);
+          if (data.budgetCategoryList) setBudgetCategoryList(data.budgetCategoryList);
+          if (data.assetCategoryList) setAssetCategoryList(data.assetCategoryList);
+          if (data.themeColor) setThemeColor(data.themeColor);
+          if (data.customCategoryColors) setCustomCategoryColors(data.customCategoryColors);
+          if (data.isAutoTheme !== undefined) setIsAutoTheme(data.isAutoTheme);
+          setBackupText('');
+          alert('数据恢复成功！');
+      }
+    } catch (e) {
+      alert('数据格式错误，无法恢复。请检查JSON格式。');
+    }
   };
 
   const handleClearData = () => {
@@ -586,15 +687,13 @@ export const App: React.FC = () => {
 
   return (
     <div className="min-h-screen pb-40 transition-all duration-700 overflow-x-hidden" style={{ backgroundColor: activeHeaderColor === '#ffffff' ? '#f8fafc' : `${activeHeaderColor}08` }}>
-      {/* Container with overflow-hidden for sliding content */}
-      <div className="w-full overflow-hidden">
-        <main 
-          className="flex transition-transform duration-500 ease-[cubic-bezier(0.4,0,0.2,1)] will-change-transform w-[300%]" 
-          style={{ transform: `translateX(-${tabIndex * (100 / 3)}%)` }}
+      <main className="max-w-6xl mx-auto pt-10 pb-10">
+        <div 
+          className="flex transition-transform duration-500 ease-[cubic-bezier(0.4,0,0.2,1)] will-change-transform" 
+          style={{ transform: `translateX(-${tabIndex * 100}%)`, width: '100%' }}
         >
-          {/* Asset Page */}
-          <div className="w-1/3 flex-shrink-0 px-4 pt-10 box-border">
-            <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
+          <div className="w-full flex-shrink-0 px-4">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
               <div className="lg:col-span-1 space-y-6">
                 <section 
                   className={`text-white rounded shadow-2xl relative overflow-hidden transition-all duration-500 flex flex-col justify-between sticky top-4 z-20 h-[180px] p-6 shadow-[0_20px_50px_-12px_rgba(0,0,0,0.35)]`}
@@ -648,18 +747,40 @@ export const App: React.FC = () => {
                     <Icons.Plus className="w-4 h-4" /> <span>新增账户</span>
                   </button>
                 </div>
-                <div className={`grid ${isSmallCardMode ? 'grid-cols-2 gap-3' : 'grid-cols-1 md:grid-cols-2 gap-4'} animate-in fade-in duration-500`}>
-                  {filteredAssets.map(asset => (
-                    <AssetCard key={asset.id} asset={asset} categoryColor={customCategoryColors[asset.category]} onDelete={(id) => setAssets(prev => prev.filter(a => a.id !== id))} onUpdate={handleUpdateAsset} onShowChart={setViewingAssetChart} onEditFull={setEditingAsset} onVisible={onAssetVisible} isSmallMode={isSmallCardMode} />
-                  ))}
-                </div>
+                
+                {selectedAssetCategory === '全部' ? (
+                  <div className="space-y-8 animate-in fade-in duration-500">
+                    {assetCategoryList.map(cat => {
+                      const items = assets.filter(a => a.category === cat);
+                      if (items.length === 0) return null;
+                      return (
+                        <div key={cat} className="space-y-4">
+                          <div className="flex items-center gap-3">
+                            <div className="h-4 w-1.5 rounded-full" style={{ backgroundColor: customCategoryColors[cat] || themeColor }} />
+                            <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">{cat}</h3>
+                            <div className="h-px flex-1 bg-slate-100"></div>
+                          </div>
+                          <div className={`grid ${isSmallCardMode ? 'grid-cols-2 gap-3' : 'grid-cols-1 md:grid-cols-2 gap-4'}`}>
+                            {items.map(asset => (
+                              <AssetCard key={asset.id} asset={asset} categoryColor={customCategoryColors[asset.category]} onDelete={(id) => setAssets(prev => prev.filter(a => a.id !== id))} onUpdate={handleUpdateAsset} onShowChart={setViewingAssetChart} onEditFull={setEditingAsset} onVisible={onAssetVisible} isSmallMode={isSmallCardMode} />
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className={`grid ${isSmallCardMode ? 'grid-cols-2 gap-3' : 'grid-cols-1 md:grid-cols-2 gap-4'} animate-in fade-in duration-500`}>
+                    {filteredAssets.map(asset => (
+                      <AssetCard key={asset.id} asset={asset} categoryColor={customCategoryColors[asset.category]} onDelete={(id) => setAssets(prev => prev.filter(a => a.id !== id))} onUpdate={handleUpdateAsset} onShowChart={setViewingAssetChart} onEditFull={setEditingAsset} onVisible={onAssetVisible} isSmallMode={isSmallCardMode} />
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>
-
-          {/* Budget Page */}
-          <div className="w-1/3 flex-shrink-0 px-4 pt-10 box-border">
-            <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
+          <div className="w-full flex-shrink-0 px-4">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
               <div className="lg:col-span-1 space-y-6">
                 <section 
                   className={`text-white rounded shadow-2xl relative overflow-hidden transition-all duration-500 flex flex-col justify-between sticky top-4 z-20 h-[180px] p-6 shadow-[0_20px_50px_-12px_rgba(0,0,0,0.35)]`}
@@ -730,30 +851,65 @@ export const App: React.FC = () => {
                     <Icons.Plus className="w-4 h-4" /> <span>新增预算</span>
                   </button>
                 </div>
-                <div className={`grid ${isSmallCardMode ? 'grid-cols-2 gap-3' : 'grid-cols-1 md:grid-cols-2 gap-4'} animate-in fade-in duration-500`}>
-                  {filteredBudgets.map((b) => {
-                    const realIndex = budgets.indexOf(b);
-                    return (
-                      <BudgetCard 
-                        key={realIndex} 
-                        budget={b} 
-                        index={realIndex} 
-                        themeColor={customCategoryColors[b.category] || themeColor} 
-                        onUpdate={handleUpdateBudget} 
-                        onEditFull={setEditingBudgetIndex} 
-                        onQuickAdd={setQuickAddIndex} 
-                        onViewTransactions={setViewingTransactionsIndex}
-                        isSmallMode={isSmallCardMode}
-                      />
-                    );
-                  })}
-                </div>
+                
+                {selectedBudgetCategory === '全部' ? (
+                  <div className="space-y-8 animate-in fade-in duration-500">
+                    {budgetCategoryList.map(cat => {
+                      const items = budgets.filter(b => b.category === cat);
+                      if (items.length === 0) return null;
+                      return (
+                        <div key={cat} className="space-y-4">
+                          <div className="flex items-center gap-3">
+                            <div className="h-4 w-1.5 rounded-full" style={{ backgroundColor: customCategoryColors[cat] || themeColor }} />
+                            <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">{cat}</h3>
+                            <div className="h-px flex-1 bg-slate-100"></div>
+                          </div>
+                          <div className={`grid ${isSmallCardMode ? 'grid-cols-2 gap-3' : 'grid-cols-1 md:grid-cols-2 gap-4'}`}>
+                            {items.map((b) => {
+                              const realIndex = budgets.indexOf(b);
+                              return (
+                                <BudgetCard 
+                                  key={realIndex} 
+                                  budget={b} 
+                                  index={realIndex} 
+                                  themeColor={customCategoryColors[b.category] || themeColor} 
+                                  onUpdate={handleUpdateBudget} 
+                                  onEditFull={setEditingBudgetIndex} 
+                                  onQuickAdd={setQuickAddIndex} 
+                                  onViewTransactions={setViewingTransactionsIndex}
+                                  isSmallMode={isSmallCardMode}
+                                />
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className={`grid ${isSmallCardMode ? 'grid-cols-2 gap-3' : 'grid-cols-1 md:grid-cols-2 gap-4'} animate-in fade-in duration-500`}>
+                    {filteredBudgets.map((b) => {
+                      const realIndex = budgets.indexOf(b);
+                      return (
+                        <BudgetCard 
+                          key={realIndex} 
+                          budget={b} 
+                          index={realIndex} 
+                          themeColor={customCategoryColors[b.category] || themeColor} 
+                          onUpdate={handleUpdateBudget} 
+                          onEditFull={setEditingBudgetIndex} 
+                          onQuickAdd={setQuickAddIndex} 
+                          onViewTransactions={setViewingTransactionsIndex}
+                          isSmallMode={isSmallCardMode}
+                        />
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
           </div>
-
-          {/* Settings Page */}
-          <div className="w-1/3 flex-shrink-0 px-4 pt-10 box-border">
+          <div className="w-full flex-shrink-0 px-4">
             <div className="max-w-2xl mx-auto space-y-8">
               <div className="bg-white border border-slate-200 rounded shadow-sm overflow-hidden p-8 space-y-8">
                 <div className="-mx-8 -mt-8 px-8 py-6 mb-2" style={{ background: `linear-gradient(135deg, ${themeColor}, ${themeColor}22)` }}>
@@ -773,7 +929,7 @@ export const App: React.FC = () => {
                   <div className="flex items-center justify-between p-4 bg-slate-50 border border-slate-200 rounded">
                     <div>
                       <h4 className="text-xs font-black text-slate-700 uppercase tracking-wider">紧凑型小卡片模式</h4>
-                      <p className="text-[10px] font-bold text-slate-400 mt-0.5">一屏展示更多内容</p>
+                      <p className="text-[10px] font-bold text-slate-400 mt-0.5">缩小卡片尺寸，在屏幕中显示更多内容</p>
                     </div>
                     <button 
                       onClick={() => setIsSmallCardMode(!isSmallCardMode)}
@@ -784,44 +940,56 @@ export const App: React.FC = () => {
                   </div>
                 </section>
 
-                <div className="pt-6 border-t border-slate-100 space-y-4">
-                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">数据管理与备份</label>
-                  
-                  <div className="grid grid-cols-2 gap-3">
-                    <button 
-                      onClick={handleExportFile} 
-                      style={{ backgroundColor: themeColor }}
-                      className="flex flex-col items-center justify-center gap-2 py-6 text-white font-black text-[10px] uppercase tracking-widest rounded hover:brightness-110 shadow-lg transition-all active:scale-[0.98]"
-                    >
-                      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3"><path d="M12 15V3m0 12l-4-4m4 4l4-4M2 17l.621 2.485A2 2 0 0 0 4.561 21h14.878a2 2 0 0 0 1.94-1.515L22 17" /></svg>
-                      导出数据文件
+                <div className="grid grid-cols-1 gap-4 pt-6 border-t border-slate-100">
+                  <div className="border border-slate-100 rounded overflow-hidden">
+                    <button onClick={() => setIsAssetCatExpanded(!isAssetCatExpanded)} className="w-full flex items-center justify-between p-4 bg-slate-50 hover:bg-slate-100 transition-colors">
+                      <label className="block text-[10px] font-black text-slate-600 uppercase tracking-widest cursor-pointer">资产分类管理</label>
+                      <div className={`transition-transform duration-300 ${isAssetCatExpanded ? 'rotate-180' : ''}`}>
+                        <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="m18 15-6-6-6 6" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round"/></svg>
+                      </div>
                     </button>
-                    <button 
-                      onClick={() => fileInputRef.current?.click()} 
-                      className="flex flex-col items-center justify-center gap-2 py-6 bg-slate-900 text-white font-black text-[10px] uppercase tracking-widest rounded hover:bg-slate-800 shadow-lg transition-all active:scale-[0.98]"
-                    >
-                      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3"><path d="M12 3v12m0-12l-4 4m4-4l4 4M2 17l.621 2.485A2 2 0 0 0 4.561 21h14.878a2 2 0 0 0 1.94-1.515L22 17" /></svg>
-                      导入备份文件
-                    </button>
-                    <input 
-                      type="file" 
-                      ref={fileInputRef} 
-                      onChange={handleImportFile} 
-                      accept=".json,.txt" 
-                      className="hidden" 
-                    />
+                    {isAssetCatExpanded && <div className="p-4 border-t border-slate-100"><CategoryManager list={assetCategoryList} colorsMap={customCategoryColors} onAdd={handleAddAssetCategory} onRename={handleRenameCategoryAction} onDelete={handleDeleteCategoryAction} onMove={handleMoveCategoryAction} onColorChange={handleUpdateCategoryColor} type="asset" /></div>}
                   </div>
-
-                  <button onClick={handleClearData} className="w-full py-3 bg-rose-50 text-rose-600 border border-rose-200 font-black text-[10px] uppercase tracking-widest rounded hover:bg-rose-100 transition-all active:scale-[0.98]">
-                      清空本地数据
-                  </button>
+                  <div className="border border-slate-100 rounded overflow-hidden">
+                    <button onClick={() => setIsBudgetCatExpanded(!isBudgetCatExpanded)} className="w-full flex items-center justify-between p-4 bg-slate-50 hover:bg-slate-100 transition-colors">
+                      <label className="block text-[10px] font-black text-slate-600 uppercase tracking-widest cursor-pointer">预算大类管理</label>
+                      <div className={`transition-transform duration-300 ${isBudgetCatExpanded ? 'rotate-180' : ''}`}>
+                         <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="m18 15-6-6-6 6" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round"/></svg>
+                      </div>
+                    </button>
+                    {isBudgetCatExpanded && <div className="p-4 border-t border-slate-100"><CategoryManager list={budgetCategoryList} colorsMap={customCategoryColors} onAdd={handleAddBudgetCategory} onRename={handleRenameCategoryAction} onDelete={handleDeleteCategoryAction} onMove={handleMoveCategoryAction} onColorChange={handleUpdateCategoryColor} type="budget" /></div>}
+                  </div>
+                </div>
+                <div className="pt-6 border-t border-slate-100 space-y-4">
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">数据管理 (复制/粘贴)</label>
+                  
+                  <textarea 
+                    value={backupText}
+                    onChange={(e) => setBackupText(e.target.value)}
+                    className="w-full h-32 px-3 py-2 text-[10px] font-mono font-medium text-slate-600 border border-slate-200 rounded bg-slate-50 focus:ring-2 focus:ring-slate-900/5 outline-none resize-none placeholder:text-slate-300"
+                    placeholder="在此处粘贴备份数据用于恢复，或点击'生成备份'获取数据..."
+                  />
+                  
+                  <div className="flex flex-col gap-3">
+                    <div className="flex gap-3">
+                        <button onClick={handleCopyBackup} className="flex-1 py-3 bg-slate-50 text-slate-600 font-bold text-[10px] uppercase tracking-widest border border-slate-200 rounded hover:bg-slate-100 transition-all active:scale-[0.98]">
+                            生成并复制备份
+                        </button>
+                        <button onClick={handleRestoreBackup} style={{ backgroundColor: themeColor }} className="flex-1 py-3 text-white font-black text-[10px] uppercase tracking-widest rounded hover:brightness-110 shadow-md transition-all active:scale-[0.98]">
+                            从文本恢复数据
+                        </button>
+                    </div>
+                    <button onClick={handleClearData} className="w-full py-3 bg-rose-50 text-rose-600 border border-rose-200 font-black text-[10px] uppercase tracking-widest rounded hover:bg-rose-100 transition-all active:scale-[0.98]">
+                        清空数据 (保留模板)
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        </main>
-      </div>
-
+        </div>
+      </main>
+      <div className="fixed bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-slate-50 via-slate-50/80 to-transparent pointer-events-none z-30" />
       <nav className="fixed bottom-8 left-1/2 -translate-x-1/2 w-auto min-w-[320px] max-w-lg z-40 h-16 flex items-center justify-center gap-3 px-3 rounded-lg shadow-[0_12px_40px_-10px_rgba(0,0,0,0.15)] transition-all duration-700 border border-slate-200 bg-white backdrop-blur-md">
         {[
           { id: 'home', label: '资产', icon: Icons.Home },
@@ -834,9 +1002,363 @@ export const App: React.FC = () => {
           </button>
         ))}
       </nav>
+      {showDistribution && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in zoom-in-95 duration-300" onClick={() => setShowDistribution(null)}>
+          <div className="bg-white rounded w-full max-w-lg p-8 shadow-2xl border border-white/20 overflow-y-auto max-h-[90vh]" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-black text-slate-900 uppercase tracking-tighter">{showDistribution === 'asset' ? '资产构成分析' : '预算额度分布'}</h2>
+              <button onClick={() => setShowDistribution(null)} className="text-slate-400 hover:text-slate-900 font-black text-[10px] uppercase tracking-widest">关闭</button>
+            </div>
+            <div className="h-[250px] w-full mb-6">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={showDistribution === 'asset' ? assetDistributionData : budgetDistributionData} cx="50%" cy="50%" innerRadius={60} outerRadius={90} paddingAngle={5} dataKey="value" stroke="none">
+                    {(showDistribution === 'asset' ? assetDistributionData : budgetDistributionData).map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={customCategoryColors[entry.name] || THEME_COLORS[index % THEME_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(value: number) => [`¥${value.toLocaleString()}`, '金额']} contentStyle={{ borderRadius: '2px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', fontSize: '10px', fontWeight: 900 }} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="space-y-2 pt-4 border-t border-slate-100">
+               {[...(showDistribution === 'asset' ? assetDistributionData : budgetDistributionData)].sort((a,b) => b.value - a.value).map((item, index) => {
+                 const total = (showDistribution === 'asset' ? assetDistributionData : budgetDistributionData).reduce((sum, i) => sum + i.value, 0);
+                 const percent = total > 0 ? (item.value / total * 100).toFixed(1) : '0.0';
+                 const color = customCategoryColors[item.name] || THEME_COLORS[index % THEME_COLORS.length];
+                 return (
+                   <div key={item.name} className="flex justify-between items-center p-3 bg-slate-50 rounded border border-slate-100 hover:border-slate-200 transition-colors">
+                     <div className="flex items-center gap-2">
+                       <div className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
+                       <span className="text-[10px] font-black text-slate-700 uppercase tracking-tighter">{item.name}</span>
+                     </div>
+                     <div className="flex gap-8 items-center font-mono">
+                       <span className="text-[10px] font-bold text-slate-400">{percent}%</span>
+                       <span className="text-[11px] font-black text-slate-900 w-20 text-right">¥{item.value.toLocaleString()}</span>
+                     </div>
+                   </div>
+                 );
+               })}
+               <div className="flex justify-between items-center p-3 mt-4 rounded transition-colors duration-500" style={{ backgroundColor: themeColor, color: isThemeDark ? '#fff' : '#0f172a' }}>
+                 <span className="text-[10px] font-black uppercase tracking-widest">总计</span>
+                 <span className="text-[12px] font-mono font-black">¥{(showDistribution === 'asset' ? assetDistributionData : budgetDistributionData).reduce((sum, i) => sum + i.value, 0).toLocaleString()}</span>
+               </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {(viewingAssetChart || showGlobalChart) && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in zoom-in-95 duration-300">
+          <div className="bg-white rounded w-full max-w-2xl p-6 shadow-2xl border border-white/20">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4">
+              <div>
+                  <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">{showGlobalChart ? '资产趋势分析' : viewingAssetChart?.name}</h2>
+                  <p className="text-xs font-bold text-slate-400 mt-1">{showGlobalChart ? '全账户资产净值历史波动' : '该账户的历史资产价值记录'}</p>
+              </div>
+              <div className="flex items-center gap-4">
+                  <div className="flex bg-slate-100 p-1 rounded-lg">
+                    <button onClick={() => setChartRange('30d')} className={`px-4 py-1.5 text-[10px] font-black rounded-md transition-all ${chartRange === '30d' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-400 hover:text-slate-600'}`}>30天</button>
+                    <button onClick={() => setChartRange('1y')} className={`px-4 py-1.5 text-[10px] font-black rounded-md transition-all ${chartRange === '1y' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-400 hover:text-slate-600'}`}>本年</button>
+                  </div>
+                  <button onClick={(e) => { e.stopPropagation(); setViewingAssetChart(null); setShowGlobalChart(false); }} className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-400 hover:bg-slate-200 hover:text-slate-900 transition-colors">
+                    <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                  </button>
+              </div>
+            </div>
+            <div className="h-72 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={getChartData(showGlobalChart ? globalHistory : (viewingAssetChart?.history || []))} margin={{ top: 10, right: 0, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                  <XAxis 
+                    dataKey="date" 
+                    axisLine={false} 
+                    tickLine={false} 
+                    tickFormatter={(val) => {
+                       // Format date to MM-DD for cleaner x-axis
+                       try {
+                           const d = new Date(val);
+                           if (isNaN(d.getTime())) return val;
+                           return `${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getDate().toString().padStart(2, '0')}`;
+                       } catch(e) { return val; }
+                    }}
+                    tick={{ fontSize: 9, fill: '#cbd5e1', fontWeight: 800, dy: 10 }}
+                    padding={{ left: 10, right: 10 }}
+                  />
+                  <YAxis 
+                    axisLine={false} 
+                    tickLine={false} 
+                    tickFormatter={(val) => `¥${(val/10000).toFixed(1)}w`} 
+                    tick={{ fontSize: 9, fill: '#cbd5e1', fontWeight: 800, dx: 5, dy: -10 }} 
+                    mirror={true}
+                    width={40}
+                  />
+                  <Tooltip formatter={(val: number) => [`¥${val.toLocaleString()}`, '金额']} contentStyle={{ borderRadius: '2px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', fontSize: '10px', fontWeight: 900 }} />
+                  <Area type="monotone" dataKey="value" stroke={viewingAssetChart ? (viewingAssetChart.color || customCategoryColors[viewingAssetChart.category] || CategoryColors[viewingAssetChart.category as AssetCategory]) : themeColor} strokeWidth={3} fillOpacity={0.05} fill={viewingAssetChart ? (viewingAssetChart.color || customCategoryColors[viewingAssetChart.category] || CategoryColors[viewingAssetChart.category as AssetCategory]) : themeColor} dot={{ r: 3, strokeWidth: 2, fill: '#fff' }} activeDot={{ r: 5, strokeWidth: 0 }} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+            
+            {viewingAssetChart && (
+                <div className="mt-6 border-t border-slate-100 pt-4">
+                    <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3">历史记录管理</h3>
+                    <div className="max-h-48 overflow-y-auto space-y-1 pr-2">
+                        {[...viewingAssetChart.history].map((h, i) => ({...h, originalIndex: i})).reverse().map((point) => (
+                            <div key={point.originalIndex} className="flex items-center justify-between p-2 rounded hover:bg-slate-50 group transition-colors border border-transparent hover:border-slate-100">
+                                <div className="flex items-center gap-4">
+                                    <span className="text-[10px] font-black text-slate-400 font-mono w-20">{point.date}</span>
+                                    <span className="text-sm font-bold text-slate-700 font-mono">¥{point.value.toLocaleString()}</span>
+                                </div>
+                                <button 
+                                    onClick={() => handleDeleteHistoryPoint(viewingAssetChart.id, point.originalIndex)}
+                                    className="p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded transition-all opacity-0 group-hover:opacity-100"
+                                    title="删除记录"
+                                >
+                                    <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                </button>
+                            </div>
+                        ))}
+                        {viewingAssetChart.history.length === 0 && <div className="text-center py-4 text-xs text-slate-300 font-bold">暂无记录</div>}
+                    </div>
+                </div>
+            )}
+          </div>
+        </div>
+      )}
+      <AddAssetModal 
+        isOpen={isModalOpen} 
+        onClose={() => setIsModalOpen(false)} 
+        onAdd={(newAsset) => setAssets([...assets, { ...newAsset, id: Math.random().toString(36).substr(2, 9), currency: 'CNY', lastUpdated: new Date().toLocaleDateString('zh-CN'), history: [{ date: new Date().toISOString().split('T')[0], value: newAsset.value }] }])} 
+        assetCategoryList={assetCategoryList} 
+        categoryColors={customCategoryColors}
+        defaultCategory={selectedAssetCategory !== '全部' ? selectedAssetCategory : undefined}
+      />
+      {editingAsset && <AddAssetModal 
+        isOpen={!!editingAsset} 
+        onClose={() => setEditingAsset(null)} 
+        onAdd={(data) => { handleUpdateAsset(editingAsset.id, data); setEditingAsset(null); }} 
+        initialData={editingAsset} 
+        assetCategoryList={assetCategoryList} 
+        categoryColors={customCategoryColors}
+        onDelete={() => {
+            if (confirm(`确定要删除账户 "${editingAsset.name}" 吗？`)) {
+                setAssets(prev => prev.filter(a => a.id !== editingAsset.id));
+                setEditingAsset(null);
+            }
+        }}
+      />}
+      {editingBudgetIndex !== null && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-xl animate-in zoom-in-95 duration-300">
+          <div className="bg-white rounded w-full max-sm:max-w-xs max-w-lg p-8 shadow-2xl overflow-y-auto max-h-[90vh] overflow-hidden">
+            <div className="-mx-8 -mt-8 px-8 py-6 mb-8" style={{ background: `linear-gradient(135deg, ${budgets[editingBudgetIndex].color || themeColor}, ${(budgets[editingBudgetIndex].color || themeColor)}22)` }}>
+                <h2 className={`text-xl font-black uppercase ${isDarkColor(budgets[editingBudgetIndex].color || themeColor) ? 'text-white' : 'text-slate-900'}`}>编辑预算项目</h2>
+            </div>
+            <div className="space-y-6">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">分类</label>
+                  <select className="w-full px-4 py-3 border border-slate-200 rounded font-bold bg-slate-50" value={budgets[editingBudgetIndex].category} onChange={e => handleUpdateBudget(editingBudgetIndex, { category: e.target.value })}>
+                    {budgetCategoryList.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">名称</label>
+                  <input type="text" className="w-full px-4 py-3 border border-slate-200 rounded font-bold" value={budgets[editingBudgetIndex].subCategory || ''} onChange={e => handleUpdateBudget(editingBudgetIndex, { subCategory: e.target.value })} placeholder="如：餐饮"/>
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                  <div className="min-w-0">
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 whitespace-nowrap">日预算(≈)</label>
+                    <input 
+                        type="number" 
+                        className="w-full px-2 py-3 border border-slate-200 rounded font-bold bg-slate-50 text-sm" 
+                        value={budgets[editingBudgetIndex].monthlyAmount ? (budgets[editingBudgetIndex].monthlyAmount / 30).toFixed(0) : ''} 
+                        onChange={e => handleUpdateBudget(editingBudgetIndex, { monthlyAmount: (parseFloat(e.target.value) || 0) * 30 })} 
+                        placeholder="0"
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 whitespace-nowrap">月预算</label>
+                    <input 
+                        type="number" 
+                        className="w-full px-2 py-3 border border-slate-200 rounded font-bold text-sm" 
+                        value={budgets[editingBudgetIndex].monthlyAmount} 
+                        onChange={e => handleUpdateBudget(editingBudgetIndex, { monthlyAmount: parseFloat(e.target.value) || 0 })} 
+                        placeholder="0"
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 whitespace-nowrap">年预算</label>
+                    <input 
+                        type="number" 
+                        className="w-full px-2 py-3 border border-slate-200 rounded font-bold bg-slate-50 text-sm" 
+                        value={budgets[editingBudgetIndex].monthlyAmount * 12} 
+                        onChange={e => handleUpdateBudget(editingBudgetIndex, { monthlyAmount: (parseFloat(e.target.value) || 0) / 12 })} 
+                        placeholder="0"
+                    />
+                  </div>
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">备注信息</label>
+                <input type="text" className="w-full px-4 py-3 border border-slate-200 rounded font-bold" value={budgets[editingBudgetIndex].notes || ''} onChange={e => handleUpdateBudget(editingBudgetIndex, { notes: e.target.value })} />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">预算色值</label>
+                <div className="grid grid-cols-6 gap-2">
+                   {THEME_COLORS.map(color => (
+                     <button 
+                       key={color} 
+                       onClick={() => handleUpdateBudget(editingBudgetIndex, { color })} 
+                       style={{ backgroundColor: color }} 
+                       className={`w-full aspect-square rounded border ${budgets[editingBudgetIndex].color === color ? 'border-slate-900 ring-2 ring-slate-900/10' : 'border-slate-100'} transition-all hover:scale-105 active:scale-95`}
+                     />
+                   ))}
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-4 mt-10">
+                <button onClick={handleDeleteBudget} className="px-5 py-4 text-rose-500 font-black text-xs uppercase tracking-widest hover:bg-rose-50 transition-colors border border-rose-100 rounded">删除</button>
+                <button onClick={() => setEditingBudgetIndex(null)} style={{ backgroundColor: budgets[editingBudgetIndex].color || themeColor }} className="flex-1 py-4 text-white font-black text-xs uppercase tracking-widest rounded shadow-lg active:scale-95 transition-all">保存</button>
+            </div>
+          </div>
+        </div>
+      )}
 
-      {/* Modals remain same */}
-      <AddAssetModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onAdd={(newAsset) => setAssets([...assets, { ...newAsset, id: Math.random().toString(36).substr(2, 9), currency: 'CNY', lastUpdated: new Date().toLocaleDateString('zh-CN'), history: [{ date: new Date().toISOString().split('T')[0], value: newAsset.value }] }])} assetCategoryList={assetCategoryList} categoryColors={customCategoryColors} defaultCategory={selectedAssetCategory !== '全部' ? selectedAssetCategory : undefined} />
+      {/* Viewing Transactions Modal */}
+      {viewingTransactionsIndex !== null && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-xl animate-in zoom-in-95 duration-300">
+          <div className="bg-white rounded w-full max-sm:max-w-xs max-w-md p-8 shadow-2xl overflow-y-auto max-h-[90vh] overflow-hidden">
+             <div className="-mx-8 -mt-8 px-8 py-6 mb-8" style={{ background: `linear-gradient(135deg, ${budgets[viewingTransactionsIndex].color || themeColor}, ${(budgets[viewingTransactionsIndex].color || themeColor)}22)` }}>
+                 <h2 className={`text-xl font-black uppercase ${isDarkColor(budgets[viewingTransactionsIndex].color || themeColor) ? 'text-white' : 'text-slate-900'}`}>
+                   {budgets[viewingTransactionsIndex].subCategory || '账单流水'}
+                 </h2>
+                 <p className={`text-xs font-bold mt-1 ${isDarkColor(budgets[viewingTransactionsIndex].color || themeColor) ? 'text-white/70' : 'text-slate-500'}`}>
+                    历史消费记录管理
+                 </p>
+             </div>
+
+             <div className="space-y-6">
+                <div className="flex justify-between items-center mb-3">
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">近期流水</label>
+                  {!isAddingTransaction && (
+                    <button 
+                      onClick={() => setIsAddingTransaction(true)}
+                      className="text-[10px] font-black uppercase tracking-widest text-white px-2 py-1 rounded shadow-sm hover:brightness-110 active:scale-95 transition-all"
+                      style={{ backgroundColor: budgets[viewingTransactionsIndex].color || themeColor }}
+                    >
+                      + 补录一笔
+                    </button>
+                  )}
+                </div>
+
+                {isAddingTransaction && (
+                  <div className="mb-4 bg-slate-50 p-3 rounded border border-slate-100 animate-in slide-in-from-top-2">
+                    <div className="flex gap-2 mb-2">
+                       <input 
+                         autoFocus
+                         type="number" 
+                         placeholder="金额" 
+                         className="flex-1 px-3 py-2 border border-slate-200 rounded font-bold text-sm"
+                         value={newTransactionAmount}
+                         onChange={(e) => setNewTransactionAmount(e.target.value)}
+                       />
+                       <input 
+                         type="text" 
+                         placeholder="备注 (选填)" 
+                         className="flex-[2] px-3 py-2 border border-slate-200 rounded font-bold text-sm"
+                         value={newTransactionNote}
+                         onChange={(e) => setNewTransactionNote(e.target.value)}
+                       />
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      <button onClick={() => { setIsAddingTransaction(false); setNewTransactionAmount(''); setNewTransactionNote(''); }} className="px-3 py-1.5 text-slate-400 text-xs font-black uppercase tracking-widest hover:bg-slate-200 rounded transition-colors">取消</button>
+                      <button onClick={handleManualAddTransaction} className="px-3 py-1.5 text-white bg-slate-900 text-xs font-black uppercase tracking-widest rounded hover:bg-slate-800 transition-colors">确认添加</button>
+                    </div>
+                  </div>
+                )}
+
+                <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2">
+                   {(budgets[viewingTransactionsIndex].transactions || []).length > 0 ? (
+                      [...(budgets[viewingTransactionsIndex].transactions || [])].reverse().map(t => (
+                        <div key={t.id} className="flex items-center justify-between p-3 rounded hover:bg-slate-50 border border-transparent hover:border-slate-100 group transition-all">
+                           <div className="flex items-center gap-3">
+                              <span className="text-[10px] font-black text-slate-400 font-mono">{t.date}</span>
+                              <span className="text-xs font-bold text-slate-700">{t.note}</span>
+                           </div>
+                           <div className="flex items-center gap-3">
+                              <span className="text-sm font-black font-mono text-slate-900">¥{t.amount.toLocaleString()}</span>
+                              <button 
+                                onClick={() => handleDeleteTransaction(viewingTransactionsIndex!, t.id, t.amount)}
+                                className="p-1.5 text-slate-300 hover:text-rose-500 rounded hover:bg-rose-50 opacity-0 group-hover:opacity-100 transition-all"
+                              >
+                                <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                              </button>
+                           </div>
+                        </div>
+                      ))
+                   ) : (
+                     <div className="text-center py-8 text-[10px] font-bold text-slate-300">暂无流水记录</div>
+                   )}
+                </div>
+             </div>
+
+             <div className="mt-8">
+                 <button onClick={() => setViewingTransactionsIndex(null)} className="w-full py-4 bg-slate-100 text-slate-600 font-black text-xs uppercase tracking-widest rounded hover:bg-slate-200 transition-all">
+                    关闭
+                 </button>
+             </div>
+          </div>
+        </div>
+      )}
+
+      {editingCategory && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm" onClick={() => setEditingCategory(null)}>
+          <div className="bg-white p-6 rounded shadow-2xl font-bold text-slate-900 text-sm max-w-xs text-center animate-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
+            <p className="mb-4">是否重命名分类 "{editingCategory.name}"？</p>
+            <div className="flex gap-3">
+              <button onClick={() => setEditingCategory(null)} className="flex-1 py-2 text-slate-400 text-xs font-black uppercase">取消</button>
+              <button onClick={handleRenameCategory} style={{ backgroundColor: themeColor }} className="flex-1 py-2 text-white rounded text-xs font-black uppercase tracking-widest">确认重命名</button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Quick Add Transaction Modal */}
+      {quickAddIndex !== null && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm" onClick={() => { setQuickAddIndex(null); setQuickAmount(''); }}>
+          <div className="bg-white p-6 rounded shadow-2xl w-full max-w-xs animate-in zoom-in-95 duration-200 border border-slate-100" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-4">
+               <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">快速记账</span>
+               <h3 className="text-xl font-black text-slate-900">{budgets[quickAddIndex].subCategory || budgets[quickAddIndex].category}</h3>
+            </div>
+            
+            <input 
+              autoFocus
+              type="number" 
+              className="w-full px-4 py-3 border border-slate-200 rounded font-bold text-xl mb-6 focus:ring-2 focus:ring-slate-900/5 outline-none" 
+              placeholder="输入金额"
+              value={quickAmount}
+              onChange={(e) => setQuickAmount(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleQuickAdd()}
+            />
+            
+            <div className="flex gap-3">
+              <button 
+                onClick={() => { setQuickAddIndex(null); setQuickAmount(''); }} 
+                className="flex-1 py-3 text-slate-400 text-xs font-black uppercase tracking-widest hover:bg-slate-50 rounded border border-slate-100 transition-colors"
+              >
+                取消
+              </button>
+              <button 
+                onClick={handleQuickAdd} 
+                style={{ backgroundColor: budgets[quickAddIndex].color || themeColor }} 
+                className="flex-1 py-3 text-white rounded text-xs font-black uppercase tracking-widest shadow-md hover:brightness-110 active:scale-95 transition-all"
+              >
+                确认
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
