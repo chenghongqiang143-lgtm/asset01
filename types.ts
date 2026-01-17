@@ -1,24 +1,22 @@
 
 export enum AssetCategory {
-  CASH = '现金',
-  STOCK = '股票',
-  CRYPTO = '加密货币',
-  REAL_ESTATE = '房地产',
+  THIRD_PARTY = '第三方支付',
+  BANK = '银行储蓄',
+  WEALTH = '理财',
   FUND = '基金',
-  LIABILITY = '负债',
   SAVING = '攒钱',
+  LIABILITY = '负债',
   OTHER = '其他'
 }
 
 export const CategoryColors: Record<AssetCategory, string> = {
-  [AssetCategory.CASH]: '#3b82f6', 
-  [AssetCategory.STOCK]: '#6366f1', 
-  [AssetCategory.CRYPTO]: '#f59e0b', 
-  [AssetCategory.REAL_ESTATE]: '#10b981', 
-  [AssetCategory.FUND]: '#a855f7', 
-  [AssetCategory.LIABILITY]: '#ef4444', 
-  [AssetCategory.SAVING]: '#ec4899', 
-  [AssetCategory.OTHER]: '#64748b', 
+  [AssetCategory.THIRD_PARTY]: '#06b6d4', // Cyan for Alipay/WeChat
+  [AssetCategory.BANK]: '#3b82f6',        // Blue for Banks
+  [AssetCategory.WEALTH]: '#8b5cf6',      // Violet for Wealth
+  [AssetCategory.FUND]: '#f59e0b',        // Amber/Orange for Funds
+  [AssetCategory.SAVING]: '#10b981',      // Emerald for Saving
+  [AssetCategory.LIABILITY]: '#ef4444',   // Red for Liability
+  [AssetCategory.OTHER]: '#64748b',       // Slate for Others
 };
 
 export interface HistoryPoint {

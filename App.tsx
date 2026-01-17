@@ -33,10 +33,11 @@ const DEFAULT_BUDGET_CATEGORIES = ['生活', '投资', '其他'];
 const DEFAULT_ASSET_CATEGORIES = Object.values(AssetCategory);
 
 const INITIAL_ASSETS: Asset[] = [
-  { id: '1', name: '工商银行活期', category: AssetCategory.CASH, value: 45000, currency: 'CNY', change24h: 0, lastUpdated: '2024-05-20', history: generateMockHistory(45000) },
-  { id: '2', name: '腾讯控股 (00700)', category: AssetCategory.STOCK, value: 120500, currency: 'CNY', change24h: 1.2, lastUpdated: '2024-05-20', history: generateMockHistory(120500) },
-  { id: '3', name: '招商银行信用卡', category: AssetCategory.LIABILITY, value: 8500, targetValue: 50000, durationMonths: 12, currency: 'CNY', lastUpdated: '2024-05-20', history: generateMockHistory(8500), notes: '还款日10号' },
-  { id: '5', name: 'Bitcoin', category: AssetCategory.CRYPTO, value: 58000, currency: 'CNY', change24h: 4.5, lastUpdated: '2024-05-20', history: generateMockHistory(58000) },
+  { id: '1', name: '支付宝余额', category: AssetCategory.THIRD_PARTY, value: 45000, currency: 'CNY', change24h: 0, lastUpdated: '2024-05-20', history: generateMockHistory(45000) },
+  { id: '2', name: '招商银行储蓄卡', category: AssetCategory.BANK, value: 120500, currency: 'CNY', change24h: 0.01, lastUpdated: '2024-05-20', history: generateMockHistory(120500) },
+  { id: '3', name: '稳健理财Pro', category: AssetCategory.WEALTH, value: 58000, currency: 'CNY', change24h: 0.1, lastUpdated: '2024-05-20', history: generateMockHistory(58000) },
+  { id: '4', name: '易方达蓝筹精选', category: AssetCategory.FUND, value: 32000, currency: 'CNY', change24h: -1.2, lastUpdated: '2024-05-20', history: generateMockHistory(32000) },
+  { id: '5', name: '信用卡欠款', category: AssetCategory.LIABILITY, value: 8500, targetValue: 50000, durationMonths: 12, currency: 'CNY', lastUpdated: '2024-05-20', history: generateMockHistory(8500), notes: '还款日10号' },
 ];
 
 const INITIAL_BUDGETS: Budget[] = [
@@ -112,7 +113,6 @@ const FilterBar = memo(({ selected, onSelect, categories, onAdd, type, themeColo
 });
 
 export const App: React.FC = () => {
-  const [isAppReady, setIsAppReady] = useState(false);
   const [activeTab, setActiveTab] = useState<'home' | 'budget' | 'settings'>('home');
   const [assets, setAssets] = useState<Asset[]>(() => {
     const saved = localStorage.getItem('assets_data');
@@ -177,20 +177,15 @@ export const App: React.FC = () => {
   }, [activeTab]);
 
   useEffect(() => {
-    const loadData = async () => {
-      try {
-        await new Promise(resolve => setTimeout(resolve, 600));
-        setIsAppReady(true);
-        const loader = document.getElementById('initial-loader');
-        if (loader) {
-          loader.style.opacity = '0';
-          setTimeout(() => loader.remove(), 500);
-        }
-      } catch (e) {
-        setIsAppReady(true);
+    // 立即移除加载状态，不阻塞渲染
+    // Use requestAnimationFrame to ensure the remove happens after the first paint
+    requestAnimationFrame(() => {
+      const loader = document.getElementById('initial-loader');
+      if (loader) {
+        loader.style.opacity = '0';
+        setTimeout(() => loader.remove(), 500);
       }
-    };
-    loadData();
+    });
   }, []);
 
   useEffect(() => localStorage.setItem('assets_data', JSON.stringify(assets)), [assets]);
@@ -308,6 +303,31 @@ export const App: React.FC = () => {
     });
   }, []);
 
+  const handleClearDataKeepTemplate = () => {
+    if (!confirm('确定要清除所有数据但保留模板吗？\n资产数值将归零，预算流水将清空，但分类设置将保留。')) return;
+
+    // Reset Assets: Keep structure, reset value to 0, clear history
+    const resetAssets = assets.map(a => ({
+      ...a,
+      value: 0,
+      change24h: 0,
+      history: [],
+      lastUpdated: new Date().toLocaleDateString('zh-CN')
+    }));
+
+    // Reset Budgets: Keep limit, reset spent and transactions
+    const resetBudgets = budgets.map(b => ({
+      ...b,
+      spentThisMonth: 0,
+      transactions: []
+    }));
+
+    // Update state directly
+    setAssets(resetAssets);
+    setBudgets(resetBudgets);
+    alert('数据已重置，模板已保留。');
+  };
+
   const handleAddBudgetCategory = () => {
     const newCat = prompt('请输入新预算分类名称：');
     if (newCat) {
@@ -422,14 +442,18 @@ export const App: React.FC = () => {
 
   const isThemeDark = isDarkColor(themeColor);
 
-  if (!isAppReady) return null;
-
   return (
     <div className="min-h-screen pb-40 transition-all duration-700 overflow-x-hidden" style={{ backgroundColor: activeHeaderColor === '#ffffff' ? '#f8fafc' : `${activeHeaderColor}08` }}>
       <main className="max-w-6xl mx-auto pt-10 pb-10">
-        <div className="flex transition-transform duration-500 ease-[cubic-bezier(0.4,0,0.2,1)]" style={{ transform: `translateX(-${tabIndex * 100}%)`, width: '100%' }}>
+        <div 
+          className="flex transition-transform duration-500 ease-[cubic-bezier(0.4,0,0.2,1)] will-change-transform" 
+          style={{ 
+            transform: `translate3d(-${tabIndex * 33.3333}%, 0, 0)`, 
+            width: '300%' 
+          }}
+        >
           {/* 资产页 */}
-          <div className="w-full flex-shrink-0 px-4">
+          <div className="flex-shrink-0 px-4" style={{ width: '33.3333%' }}>
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
               <div className="lg:col-span-1">
                 <section 
@@ -503,7 +527,7 @@ export const App: React.FC = () => {
             </div>
           </div>
           {/* 预算页 */}
-          <div className="w-full flex-shrink-0 px-4">
+          <div className="flex-shrink-0 px-4" style={{ width: '33.3333%' }}>
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
               <div className="lg:col-span-1">
                 <section 
@@ -580,7 +604,7 @@ export const App: React.FC = () => {
             </div>
           </div>
           {/* 设置页 */}
-          <div className="w-full flex-shrink-0 px-4">
+          <div className="flex-shrink-0 px-4" style={{ width: '33.3333%' }}>
             <div className="max-w-xl mx-auto space-y-8 bg-white p-8 rounded shadow-sm border border-slate-200" style={{ borderRadius: '4px' }}>
               <h2 className="text-xl font-black uppercase tracking-tighter">偏好设置</h2>
               <section className="space-y-4">
@@ -602,6 +626,18 @@ export const App: React.FC = () => {
                   </button>
                 </div>
               </section>
+              
+              <section className="pt-6 border-t border-slate-100">
+                 <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="text-xs font-black uppercase tracking-widest text-rose-500">保留模板清除数据</h4>
+                    </div>
+                    <button onClick={handleClearDataKeepTemplate} className="px-4 py-2 border border-rose-200 bg-rose-50 text-rose-600 font-black text-[10px] uppercase rounded-[4px] hover:bg-rose-100 active:scale-95 transition-all">
+                       执行清除
+                    </button>
+                 </div>
+              </section>
+
               <section className="pt-6 border-t border-slate-100 space-y-4">
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">数据备份</label>
                 <textarea value={backupText} onChange={e => setBackupText(e.target.value)} className="w-full h-24 p-3 bg-slate-50 border border-slate-200 text-[10px] font-mono rounded-[4px] outline-none" placeholder="粘贴数据在此恢复..." />

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Asset, AssetCategory } from '../types';
 import { Icons } from '../constants';
@@ -31,7 +30,7 @@ const isDarkColor = (color: string) => {
 
 const AddAssetModal: React.FC<AddAssetModalProps> = ({ isOpen, onClose, onAdd, initialData, assetCategoryList, categoryColors, onDelete, defaultCategory }) => {
   const [name, setName] = useState('');
-  const [category, setCategory] = useState<AssetCategory>(AssetCategory.CASH);
+  const [category, setCategory] = useState<AssetCategory>(AssetCategory.THIRD_PARTY);
   const [value, setValue] = useState('');
   const [targetValue, setTargetValue] = useState('');
   const [durationMonths, setDurationMonths] = useState('');
@@ -52,7 +51,7 @@ const AddAssetModal: React.FC<AddAssetModalProps> = ({ isOpen, onClose, onAdd, i
       setName('');
       const targetCategory = defaultCategory && assetCategoryList.includes(defaultCategory) 
         ? defaultCategory 
-        : (assetCategoryList[0] || AssetCategory.CASH);
+        : (assetCategoryList[0] || AssetCategory.THIRD_PARTY);
       setCategory(targetCategory as AssetCategory);
       setValue('');
       setTargetValue('');
@@ -67,7 +66,7 @@ const AddAssetModal: React.FC<AddAssetModalProps> = ({ isOpen, onClose, onAdd, i
 
   const activeColor = selectedColor || categoryColors[category] || '#0f172a';
   const isDark = isDarkColor(activeColor);
-  const showTargetInput = category === AssetCategory.SAVING || category === AssetCategory.LIABILITY;
+  const showTargetInput = category === AssetCategory.BANK || category === AssetCategory.LIABILITY;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -116,7 +115,7 @@ const AddAssetModal: React.FC<AddAssetModalProps> = ({ isOpen, onClose, onAdd, i
           {showTargetInput && (
             <div className="grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2 duration-300">
               <div>
-                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">{category === AssetCategory.SAVING ? '攒钱目标 (¥)' : '负债限额 (¥)'}</label>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">{category === AssetCategory.BANK ? '攒钱目标 (¥)' : '负债限额 (¥)'}</label>
                 <input type="number" step="0.01" value={targetValue} onChange={(e) => setTargetValue(e.target.value)} className={inputClass} style={focusStyle} placeholder="金额" />
               </div>
               <div>

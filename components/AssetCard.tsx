@@ -23,7 +23,7 @@ const AssetCard: React.FC<AssetCardProps> = memo(({ asset, categoryColor, onDele
   // Priority: Asset individual color > Category state color > Default CategoryColors mapping
   const baseColor = asset.color || categoryColor || CategoryColors[asset.category as AssetCategory] || '#64748b';
 
-  const hasProgress = (asset.category === AssetCategory.SAVING || asset.category === AssetCategory.LIABILITY) && asset.targetValue;
+  const hasProgress = (asset.category === AssetCategory.BANK || asset.category === AssetCategory.LIABILITY) && asset.targetValue;
   const progressPercent = hasProgress ? Math.min(100, (asset.value / (asset.targetValue || 1)) * 100) : 0;
 
   useEffect(() => {
