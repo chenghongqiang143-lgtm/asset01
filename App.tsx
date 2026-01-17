@@ -721,12 +721,26 @@ export const App: React.FC = () => {
             <div className="mt-6 border-t border-slate-100 pt-4">
                <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">近期数值详情</h3>
                <div className="max-h-40 overflow-y-auto space-y-1 pr-2 no-scrollbar">
-                  {[...(showGlobalChart ? globalHistory : (viewingAssetChart?.history || []))].reverse().slice(0, 10).map((h, i) => (
-                    <div key={i} className="flex justify-between items-center py-2 px-3 hover:bg-slate-50 rounded-[2px] transition-colors">
-                        <span className="text-[10px] font-bold text-slate-400 font-mono">{h.date}</span>
-                        <span className="text-xs font-black text-slate-900 font-mono">¥{h.value.toLocaleString()}</span>
-                    </div>
-                  ))}
+                  {(() => {
+                    const hist = [...(showGlobalChart ? globalHistory : (viewingAssetChart?.history || []))].reverse();
+                    return hist.slice(0, 10).map((h, i) => {
+                      const prev = hist[i + 1];
+                      const change = prev ? h.value - prev.value : 0;
+                      return (
+                        <div key={i} className="flex justify-between items-center py-2 px-3 hover:bg-slate-50 rounded-[2px] transition-colors">
+                            <span className="text-[10px] font-bold text-slate-400 font-mono">{h.date}</span>
+                            <div className="flex items-center gap-3">
+                              {prev && (
+                                <span className={`text-[10px] font-bold font-mono ${change >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                                  {change > 0 ? '+' : ''}{change.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                                </span>
+                              )}
+                              <span className="text-xs font-black text-slate-900 font-mono">¥{h.value.toLocaleString()}</span>
+                            </div>
+                        </div>
+                      );
+                    });
+                  })()}
                </div>
             </div>
           </div>
